@@ -24,8 +24,8 @@ namespace System
         // The constants are defined in this method: inline SIZE_T MaxArrayLength(SIZE_T componentSize) from gchelpers
         // We have different max sizes for arrays with elements of size 1 for backwards compatibility
         // Wrapped by GetMaxLength<T>()
-        internal const int MaxArrayLength = 0X7FEFFFFF;
-        internal const int MaxByteArrayLength = 0x7FFFFFC7;
+        private const int MaxArrayLength = 0X7FEFFFFF;
+        private const int MaxByteArrayLength = 0x7FFFFFC7;
 
         // This is the threshold where Introspective sort switches to Insertion sort.
         // Empirically, 16 seems to speed up most cases without slowing down others, at least for integers.
