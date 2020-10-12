@@ -1873,7 +1873,7 @@ namespace System
         }
 
         /// <summary>
-        /// Get the runtime size limitation of array of the given type.
+        /// Gets the maximum number of elements that may be contained in an array of the specified type.
         /// </summary>
         /// <typeparam name="T">The type of array element.</typeparam>
         /// <returns>The maximum count of elements allowed of array of the given type.</returns>
