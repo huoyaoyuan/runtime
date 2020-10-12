@@ -55,7 +55,7 @@ class Allocation
         UInt64 objCount = MaxBytes / (UInt64)byteArraySize;
 
         Console.WriteLine("Creating a list of {0} objects", objCount);
-        int maxArrayLength = Array.GetMaxLength<object>();
+        UInt64 maxArrayLength = (UInt64)Array.GetMaxLength<object>();
         if (objCount > maxArrayLength)
         {
             Console.WriteLine("Exceeded the max number of objects in a list");
