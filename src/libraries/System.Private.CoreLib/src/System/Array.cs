@@ -20,9 +20,10 @@ namespace System
     {
         // We impose limits on maximum array length in each dimension to allow efficient
         // implementation of advanced range check elimination in future.
-        // Keep in sync with vm\gcscan.cpp and HashHelpers.MaxPrimeArrayLength.
-        // The constants are defined in this method: inline SIZE_T MaxArrayLength(SIZE_T componentSize) from gcscan
+        // Keep in sync with vm\gchelpers.cpp and HashHelpers.MaxPrimeArrayLength.
+        // The constants are defined in this method: inline SIZE_T MaxArrayLength(SIZE_T componentSize) from gchelpers
         // We have different max sizes for arrays with elements of size 1 for backwards compatibility
+        // Wrapped by GetMaxLength<T>()
         internal const int MaxArrayLength = 0X7FEFFFFF;
         internal const int MaxByteArrayLength = 0x7FFFFFC7;
 
@@ -1870,6 +1871,9 @@ namespace System
             }
             return true;
         }
+
+        public static int GetMaxLength<T>() =>
+            Unsafe.SizeOf<T>() == 1 ? MaxByteArrayLength : MaxArrayLength;
 
         // Private value type used by the Sort methods.
         private readonly struct SorterObjectArray
