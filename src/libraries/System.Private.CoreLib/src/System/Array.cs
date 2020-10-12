@@ -1872,6 +1872,16 @@ namespace System
             return true;
         }
 
+        /// <summary>
+        /// Get the runtime size limitation of array of the given type.
+        /// </summary>
+        /// <typeparam name="T">The type of array element.</typeparam>
+        /// <returns>The maximum count of elements allowed of array of the given type.</returns>
+        /// <remarks>
+        /// This methods returns runtime limitation.
+        /// The limitation is counted in elements, not bytes.
+        /// There's no guarantee that allocation under the size would succeed.
+        /// </remarks>
         public static int GetMaxLength<T>() =>
             Unsafe.SizeOf<T>() == 1 ? MaxByteArrayLength : MaxArrayLength;
 
