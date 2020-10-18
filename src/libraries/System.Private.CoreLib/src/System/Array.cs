@@ -1882,6 +1882,7 @@ namespace System
         /// The limitation is counted in elements, not bytes.
         /// There's no guarantee that allocation under the size would succeed.
         /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int GetMaxLength<T>() =>
             Unsafe.SizeOf<T>() == 1 ? MaxByteArrayLength : MaxArrayLength;
 
