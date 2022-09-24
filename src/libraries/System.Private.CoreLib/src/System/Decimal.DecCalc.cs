@@ -2512,14 +2512,22 @@ done:
             internal static uint DecDivMod1E9(ref DecCalc value)
             {
                 ulong high64 = ((ulong)value.uhi << 32) + value.umid;
-                ulong div64 = high64 / TenToPowerNine;
+                (ulong div64, ulong rem64) = Math.DivRem(high64, TenToPowerNine);
                 value.uhi = (uint)(div64 >> 32);
                 value.umid = (uint)div64;
 
-                ulong num = ((high64 - (uint)div64 * TenToPowerNine) << 32) + value.ulo;
-                uint div = (uint)(num / TenToPowerNine);
-                value.ulo = div;
-                return (uint)num - div * TenToPowerNine;
+                if (X86.X86Base.IsSupported)
+                {
+                    (value.ulo, uint rem) = X86.X86Base.DivRem(value.ulo, (uint)rem64, TenToPowerNine);
+                    return rem;
+                }
+                else
+                {
+                    ulong num = (rem64 << 32) + value.ulo;
+                    (ulong longQ, ulong longR) = Math.DivRem(num, TenToPowerNine);
+                    value.ulo = (uint)longQ;
+                    return (uint)longR;
+                }
             }
 
             private readonly struct PowerOvfl
