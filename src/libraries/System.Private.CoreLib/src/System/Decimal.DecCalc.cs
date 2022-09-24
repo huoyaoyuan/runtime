@@ -2379,27 +2379,39 @@ ThrowOverflow:
                     uint n = d.uhi;
                     if (n == 0)
                     {
-                        ulong tmp = d.Low64;
-                        ulong div = tmp / divisor;
-                        d.Low64 = div;
-                        remainder = (uint)(tmp - div * divisor);
+                        (d.Low64, ulong longR) = Math.DivRem(d.Low64, divisor);
+                        remainder = (uint)longR;
                     }
                     else
                     {
-                        uint q;
-                        d.uhi = q = n / divisor;
-                        remainder = n - q * divisor;
+                        (d.uhi, remainder) = Math.DivRem(n, divisor);
                         n = d.umid;
                         if ((n | remainder) != 0)
                         {
-                            d.umid = q = (uint)((((ulong)remainder << 32) | n) / divisor);
-                            remainder = n - q * divisor;
+                            if (X86.X86Base.IsSupported)
+                            {
+                                (d.umid, remainder) = X86.X86Base.DivRem(n, remainder, divisor);
+                            }
+                            else
+                            {
+                                (ulong longQ, ulong longR) = Math.DivRem(((ulong)remainder << 32) | n, divisor);
+                                d.umid = (uint)longQ;
+                                remainder = (uint)longR;
+                            }
                         }
                         n = d.ulo;
                         if ((n | remainder) != 0)
                         {
-                            d.ulo = q = (uint)((((ulong)remainder << 32) | n) / divisor);
-                            remainder = n - q * divisor;
+                            if (X86.X86Base.IsSupported)
+                            {
+                                (d.ulo, remainder) = X86.X86Base.DivRem(n, remainder, divisor);
+                            }
+                            else
+                            {
+                                (ulong longQ, ulong longR) = Math.DivRem(((ulong)remainder << 32) | n, divisor);
+                                d.ulo = (uint)longQ;
+                                remainder = (uint)longR;
+                            }
                         }
                     }
                     power = divisor;
@@ -2422,26 +2434,39 @@ ThrowOverflow:
                             remainder = 0;
                             goto checkRemainder;
                         }
-                        ulong div = tmp / power;
-                        d.Low64 = div;
-                        remainder = (uint)(tmp - div * power);
+                        (d.Low64, ulong longR) = Math.DivRem(tmp, power);
+                        remainder = (uint)longR;
                     }
                     else
                     {
-                        uint q;
-                        d.uhi = q = n / power;
-                        remainder = n - q * power;
+                        (d.uhi, remainder) = Math.DivRem(n, power);
                         n = d.umid;
                         if ((n | remainder) != 0)
                         {
-                            d.umid = q = (uint)((((ulong)remainder << 32) | n) / power);
-                            remainder = n - q * power;
+                            if (X86.X86Base.IsSupported)
+                            {
+                                (d.umid, remainder) = X86.X86Base.DivRem(n, remainder, power);
+                            }
+                            else
+                            {
+                                (ulong longQ, ulong longR) = Math.DivRem(((ulong)remainder << 32) | n, power);
+                                d.umid = (uint)longQ;
+                                remainder = (uint)longR;
+                            }
                         }
                         n = d.ulo;
                         if ((n | remainder) != 0)
                         {
-                            d.ulo = q = (uint)((((ulong)remainder << 32) | n) / power);
-                            remainder = n - q * power;
+                            if (X86.X86Base.IsSupported)
+                            {
+                                (d.umid, remainder) = X86.X86Base.DivRem(n, remainder, power);
+                            }
+                            else
+                            {
+                                (ulong longQ, ulong longR) = Math.DivRem(((ulong)remainder << 32) | n, power);
+                                d.umid = (uint)longQ;
+                                remainder = (uint)longR;
+                            }
                         }
                     }
                 }
