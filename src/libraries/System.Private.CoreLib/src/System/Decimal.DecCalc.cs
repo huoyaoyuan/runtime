@@ -201,6 +201,20 @@ namespace System
                 result.High = (uint)high;
             }
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static (uint Quotient, uint Remainder) LongDiv(uint lower, ulong upper, uint divisor)
+            {
+                if (X86.X86Base.IsSupported)
+                {
+                    return X86.X86Base.DivRem(lower, (uint)upper, divisor);
+                }
+                else
+                {
+                    (ulong longQ, ulong longR) = Math.DivRem((upper << 32) | lower, divisor);
+                    return ((uint)longQ, (uint)longR);
+                }
+            }
+
             /// <summary>
             /// Do full divide, yielding 96-bit result and 32-bit remainder.
             /// </summary>
@@ -209,25 +223,12 @@ namespace System
             /// <returns>Returns remainder. Quotient overwrites dividend.</returns>
             private static uint Div96By32(ref Buf12 bufNum, uint den)
             {
-                // TODO: https://github.com/dotnet/runtime/issues/5213
                 ulong tmp;
                 if (bufNum.U2 != 0)
                 {
                     (bufNum.High64, ulong rem64) = Math.DivRem(bufNum.High64, den);
-                    if (X86.X86Base.IsSupported)
-                    {
-                        (bufNum.U0, uint result) = X86.X86Base.DivRem(bufNum.U0, (uint)rem64, den);
-                        return result;
-                    }
-                    else
-                    {
-                        tmp = (rem64 << 32) | bufNum.U0;
-                        if (tmp == 0)
-                            return 0;
-                        (ulong longR, ulong longQ) = Math.DivRem(tmp, den);
-                        bufNum.U0 = (uint)longR;
-                        return (uint)longQ;
-                    }
+                    (bufNum.U0, uint result) = LongDiv(bufNum.U0, rem64, den);
+                    return result;
                 }
 
                 tmp = bufNum.Low64;
@@ -2394,30 +2395,12 @@ ThrowOverflow:
                         n = d.umid;
                         if ((n | remainder) != 0)
                         {
-                            if (X86.X86Base.IsSupported)
-                            {
-                                (d.umid, remainder) = X86.X86Base.DivRem(n, remainder, divisor);
-                            }
-                            else
-                            {
-                                (ulong longQ, ulong longR) = Math.DivRem(((ulong)remainder << 32) | n, divisor);
-                                d.umid = (uint)longQ;
-                                remainder = (uint)longR;
-                            }
+                            (d.umid, remainder) = LongDiv(n, remainder, divisor);
                         }
                         n = d.ulo;
                         if ((n | remainder) != 0)
                         {
-                            if (X86.X86Base.IsSupported)
-                            {
-                                (d.ulo, remainder) = X86.X86Base.DivRem(n, remainder, divisor);
-                            }
-                            else
-                            {
-                                (ulong longQ, ulong longR) = Math.DivRem(((ulong)remainder << 32) | n, divisor);
-                                d.ulo = (uint)longQ;
-                                remainder = (uint)longR;
-                            }
+                            (d.ulo, remainder) = LongDiv(n, remainder, divisor);
                         }
                     }
                     power = divisor;
@@ -2428,7 +2411,6 @@ ThrowOverflow:
 
                 {
                     power = UInt32Powers10[(int)scale];
-                    // TODO: https://github.com/dotnet/runtime/issues/5213
                     uint n = d.uhi;
                     if (n == 0)
                     {
@@ -2449,30 +2431,12 @@ ThrowOverflow:
                         n = d.umid;
                         if ((n | remainder) != 0)
                         {
-                            if (X86.X86Base.IsSupported)
-                            {
-                                (d.umid, remainder) = X86.X86Base.DivRem(n, remainder, power);
-                            }
-                            else
-                            {
-                                (ulong longQ, ulong longR) = Math.DivRem(((ulong)remainder << 32) | n, power);
-                                d.umid = (uint)longQ;
-                                remainder = (uint)longR;
-                            }
+                            (d.umid, remainder) = LongDiv(n, remainder, power);
                         }
                         n = d.ulo;
                         if ((n | remainder) != 0)
                         {
-                            if (X86.X86Base.IsSupported)
-                            {
-                                (d.umid, remainder) = X86.X86Base.DivRem(n, remainder, power);
-                            }
-                            else
-                            {
-                                (ulong longQ, ulong longR) = Math.DivRem(((ulong)remainder << 32) | n, power);
-                                d.umid = (uint)longQ;
-                                remainder = (uint)longR;
-                            }
+                            (d.ulo, remainder) = LongDiv(n, remainder, power);
                         }
                     }
                 }
@@ -2522,18 +2486,8 @@ done:
                 value.uhi = (uint)(div64 >> 32);
                 value.umid = (uint)div64;
 
-                if (X86.X86Base.IsSupported)
-                {
-                    (value.ulo, uint rem) = X86.X86Base.DivRem(value.ulo, (uint)rem64, TenToPowerNine);
-                    return rem;
-                }
-                else
-                {
-                    ulong num = (rem64 << 32) + value.ulo;
-                    (ulong longQ, ulong longR) = Math.DivRem(num, TenToPowerNine);
-                    value.ulo = (uint)longQ;
-                    return (uint)longR;
-                }
+                (value.ulo, uint rem) = LongDiv(value.ulo, rem64, TenToPowerNine);
+                return rem;
             }
 
             private readonly struct PowerOvfl
