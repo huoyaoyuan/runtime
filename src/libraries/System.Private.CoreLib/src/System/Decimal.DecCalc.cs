@@ -344,6 +344,14 @@ namespace System
             private static uint Div96By64(ref Buf12 bufNum, ulong den)
             {
                 Debug.Assert(den > bufNum.High64);
+
+                if (X86.X86Base.X64.IsSupported)
+                {
+                    // Result won't overflow 64 bits, thus the x86 long div instruction can be used here
+                    (ulong div, bufNum.Low64) = X86.X86Base.X64.DivRem(bufNum.Low64, bufNum.U2, den);
+                    return (uint)div;
+                }
+
                 uint quo;
                 ulong num;
                 uint num2 = bufNum.U2;
@@ -354,11 +362,8 @@ namespace System
                         // Result is zero.  Entire dividend is remainder.
                         return 0;
 
-                    // TODO: https://github.com/dotnet/runtime/issues/5213
-                    quo = (uint)(num / den);
-                    num -= quo * den; // remainder
-                    bufNum.Low64 = num;
-                    return quo;
+                    (ulong longQuo, bufNum.Low64) = Math.DivRem(num, den);
+                    return (uint)longQuo;
                 }
 
                 uint denHigh32 = (uint)(den >> 32);
@@ -392,9 +397,9 @@ namespace System
                     //
                     return 0;
 
-                // TODO: https://github.com/dotnet/runtime/issues/5213
-                quo = (uint)(num64 / denHigh32);
-                num = bufNum.U0 | ((num64 - quo * denHigh32) << 32); // remainder
+                (ulong quo64, ulong rem64) = Math.DivRem(num64, denHigh32);
+                quo = (uint)quo64;
+                num = bufNum.U0 | (rem64 << 32); // remainder
 
                 // Compute full remainder, rem = dividend - (quo * divisor).
                 //
