@@ -443,9 +443,7 @@ namespace System
                     //
                     return 0;
 
-                // TODO: https://github.com/dotnet/runtime/issues/5213
-                uint quo = (uint)(dividend / den);
-                uint remainder = (uint)dividend - quo * den;
+                (uint quo, uint remainder) = LongDiv(bufNum.U1, bufNum.U2, den);
 
                 // Compute full remainder, rem = dividend - (quo * divisor).
                 //
