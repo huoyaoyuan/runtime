@@ -210,26 +210,32 @@ namespace System
             private static uint Div96By32(ref Buf12 bufNum, uint den)
             {
                 // TODO: https://github.com/dotnet/runtime/issues/5213
-                ulong tmp, div;
+                ulong tmp;
                 if (bufNum.U2 != 0)
                 {
-                    tmp = bufNum.High64;
-                    div = tmp / den;
-                    bufNum.High64 = div;
-                    tmp = ((tmp - (uint)div * den) << 32) | bufNum.U0;
-                    if (tmp == 0)
-                        return 0;
-                    uint div32 = (uint)(tmp / den);
-                    bufNum.U0 = div32;
-                    return (uint)tmp - div32 * den;
+                    (bufNum.High64, ulong rem64) = Math.DivRem(bufNum.High64, den);
+                    if (X86.X86Base.IsSupported)
+                    {
+                        (bufNum.U0, uint result) = X86.X86Base.DivRem(bufNum.U0, (uint)rem64, den);
+                        return result;
+                    }
+                    else
+                    {
+                        tmp = (rem64 << 32) | bufNum.U0;
+                        if (tmp == 0)
+                            return 0;
+                        (ulong longR, ulong longQ) = Math.DivRem(tmp, den);
+                        bufNum.U0 = (uint)longR;
+                        return (uint)longQ;
+                    }
                 }
 
                 tmp = bufNum.Low64;
                 if (tmp == 0)
                     return 0;
-                div = tmp / den;
-                bufNum.Low64 = div;
-                return (uint)(tmp - div * den);
+
+                (bufNum.Low64, tmp) = Math.DivRem(tmp, den);
+                return (uint)tmp;
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
