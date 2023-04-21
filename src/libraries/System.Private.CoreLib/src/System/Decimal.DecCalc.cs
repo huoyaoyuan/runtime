@@ -1352,10 +1352,7 @@ ThrowOverflow:
                             scale -= DEC_SCALE_MAX + 1;
                             ulong power = UInt64Powers10[scale];
 
-                            // TODO: https://github.com/dotnet/runtime/issues/5213
-                            tmp = low64 / power;
-                            ulong remainder = low64 - tmp * power;
-                            low64 = tmp;
+                            (low64, ulong remainder) = Math.DivRem(low64, power);
 
                             // Round result.  See if remainder >= 1/2 of divisor.
                             // Divisor is a power of 10, so it is always even.
@@ -1983,9 +1980,12 @@ ReturnZero:
                             goto ThrowOverflow;
 
                         ulong num = UInt32x32To64(remainder, power);
-                        // TODO: https://github.com/dotnet/runtime/issues/5213
-                        uint div = (uint)(num / den);
-                        remainder = (uint)num - div * den;
+
+                        // TODO: https://github.com/dotnet/runtime/issues/82194
+                        // Use X86Base.DivRem to avoid the casts
+                        (ulong longQ, ulong longR) = Math.DivRem(num, den);
+                        uint div = (uint)longQ;
+                        remainder = (uint)longR;
 
                         if (!Add32To96(ref bufQuo, div))
                         {
