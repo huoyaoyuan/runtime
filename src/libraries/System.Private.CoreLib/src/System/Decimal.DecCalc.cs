@@ -204,15 +204,12 @@ namespace System
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             private static (uint Quotient, uint Remainder) LongDiv(uint lower, ulong upper, uint divisor)
             {
-                if (X86.X86Base.IsSupported)
-                {
-                    return X86.X86Base.DivRem(lower, (uint)upper, divisor);
-                }
-                else
-                {
-                    (ulong longQ, ulong longR) = Math.DivRem((upper << 32) | lower, divisor);
-                    return ((uint)longQ, (uint)longR);
-                }
+                // TODO: https://github.com/dotnet/runtime/issues/82194
+                // Use X86.X86Base.DivRem(lower, (uint)upper, divisor)
+                // when DivRem is out of preview
+
+                (ulong longQ, ulong longR) = Math.DivRem((upper << 32) | lower, divisor);
+                return ((uint)longQ, (uint)longR);
             }
 
             /// <summary>
@@ -345,12 +342,10 @@ namespace System
             {
                 Debug.Assert(den > bufNum.High64);
 
-                if (X86.X86Base.X64.IsSupported)
-                {
-                    // Result won't overflow 64 bits, thus the x86 long div instruction can be used here
-                    (ulong div, bufNum.Low64) = X86.X86Base.X64.DivRem(bufNum.Low64, bufNum.U2, den);
-                    return (uint)div;
-                }
+                // TODO: https://github.com/dotnet/runtime/issues/82194
+                // Use X86Base.X64.DivRem(bufNum.Low64, bufNum.U2, den)
+                // when DivRem is out of preview
+                // Result won't overflow 64 bits, thus the x64 long div instruction can be used here
 
                 uint quo;
                 ulong num;
