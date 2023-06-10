@@ -5311,6 +5311,112 @@ GenTree* Compiler::impOptimizeCastClassOrIsInst(GenTree* op1, CORINFO_RESOLVED_T
 }
 
 //------------------------------------------------------------------------
+// impIsInstPatternMatch: match and import common isinst idioms
+//
+// Arguments:
+//   op1 - value to cast
+//   op2 - type handle for type to cast to
+//   codeAddr - position in IL stream after the box instruction
+//   codeEndp - end of IL stream
+//
+// Return Value:
+//   Number of IL bytes matched and imported, -1 otherwise
+//
+// Notes:
+//   op2 is known to represent an exact type (sealed or value type).
+
+int Compiler::impIsInstPatternMatch(
+    GenTree* op1, GenTree* op2, const BYTE* codeAddr, const BYTE* codeEndp)
+{
+    if ((impGetNonPrefixOpcode(codeAddr, codeEndp) == CEE_LDNULL))
+    {
+        switch (impGetNonPrefixOpcode(codeAddr + 1, codeEndp))
+        {
+            case CEE_CGT_UN:
+                // isinst + ldnull + cgt.un
+                // convert to op1 == null ? false : *op1 == op2
+                {
+                    GenTree* condNull;
+                    //
+                    // expand the null check:
+                    //
+                    //  condNull ==>   GT_NE
+                    //                 /    \.
+                    //             op1Copy CNS_INT
+                    //                      null
+                    //
+                    condNull = gtNewOperNode(GT_NE, TYP_INT, gtClone(op1), gtNewNull());
+
+                    GenTree* temp;
+                    GenTree* condMT;
+                    //
+                    // expand the methodtable match:
+                    //
+                    //  condMT ==>   GT_EQ
+                    //               /    \.
+                    //           GT_IND   op2 (typically CNS_INT)
+                    //              |
+                    //           op1Copy
+                    //
+
+                    // This can replace op1 with a GT_COMMA that evaluates op1 into a local
+                    //
+                    op1 = impCloneExpr(op1, &temp, CHECK_SPILL_ALL, nullptr DEBUGARG("CASTCLASS eval op1"));
+                    //
+                    // op1 is now known to be a non-complex tree
+                    // thus we can use gtClone(op1) from now on
+                    //
+
+                    GenTree* op2Var = op2;
+                    temp            = gtNewMethodTableLookup(temp);
+                    condMT          = gtNewOperNode(GT_EQ, TYP_INT, temp, op2);
+
+                    GenTree* qmarkNull;
+                    //
+                    // Generate QMARK - COLON tree
+                    //
+                    //  qmarkNull ==>  GT_QMARK
+                    //                 /     \.
+                    //           condNull  GT_COLON
+                    //                      /     \.
+                    //                condMT   CNS_INT
+                    //                          false
+                    //
+                    temp      = new (this, GT_COLON) GenTreeColon(TYP_INT, condMT, gtNewFalse());
+                    qmarkNull = gtNewQmarkNode(TYP_INT, condNull, temp->AsColon());
+
+                    // Make QMark node a top level node by spilling it.
+                    unsigned tmp = lvaGrabTemp(true DEBUGARG("spilling QMark"));
+                    impStoreTemp(tmp, qmarkNull, CHECK_SPILL_NONE);
+
+                    GenTree* lclVar = gtNewLclvNode(tmp, TYP_INT);
+                    impPushOnStack(lclVar, TYP_INT);
+                    return 3;
+                }
+
+            case CEE_CEQ:
+                // isinst + ldnull + ceq
+                // convert to op1 == null ? true : *op1 != op2
+
+                break;
+
+            case CEE_BRTRUE:
+            case CEE_BRTRUE_S:
+                break;
+
+            case CEE_BRFALSE:
+            case CEE_BRFALSE_S:
+
+                break;
+            default:
+                return -1;
+        }
+    }
+
+    return -1;
+}
+
+//------------------------------------------------------------------------
 // impCastClassOrIsInstToTree: build and import castclass/isinst
 //
 // Arguments:
@@ -9587,6 +9693,19 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     if (!usingReadyToRunHelper)
 #endif
                     {
+                        if (impIsClassExact(resolvedToken.hClass))
+                        {
+                            // try to fold null check after exact isinst to MT comparison
+                            int matched = impIsInstPatternMatch(op1, op2, codeAddr + sz, codeEndp);
+
+                            if (matched >= 0)
+                            {
+                                // Skip the matched IL instructions
+                                sz += matched;
+                                break;
+                            }
+                        }
+
                         op1 = impCastClassOrIsInstToTree(op1, op2, &resolvedToken, false, opcodeOffs);
                     }
                     if (compDonotInline())

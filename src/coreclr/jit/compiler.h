@@ -4346,6 +4346,8 @@ public:
 
     GenTree* impOptimizeCastClassOrIsInst(GenTree* op1, CORINFO_RESOLVED_TOKEN* pResolvedToken, bool isCastClass);
 
+    int impIsInstPatternMatch(GenTree* op1, GenTree* op2, const BYTE* codeAddr, const BYTE* codeEndp);
+
     bool VarTypeIsMultiByteAndCanEnreg(var_types                type,
                                        CORINFO_CLASS_HANDLE     typeClass,
                                        unsigned*                typeSize,
