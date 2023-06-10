@@ -5374,8 +5374,8 @@ int Compiler::impIsInstPatternMatch(
     }
 
     // Converting isinst followed by null test to:
-    // non-null test: op1 != null ? *op1 == op2 : false
-    // null test: op1 != null ? *op1 != op2 : true
+    // non-null test: op1 == null ? false : *op1 == op2
+    // null test: op1 == null ? true : *op1 != op2
 
     GenTree* temp;
     GenTree* condMT;
@@ -5405,12 +5405,12 @@ int Compiler::impIsInstPatternMatch(
     //
     // expand the null check:
     //
-    //  condNull ==>    GT_NE
+    //  condNull ==>    GT_EQ
     //                 /    \.
     //             op1Copy CNS_INT
     //                      null
     //
-    condNull = gtNewOperNode(GT_NE, TYP_INT, gtClone(op1), gtNewNull());
+    condNull = gtNewOperNode(GT_EQ, TYP_INT, gtClone(op1), gtNewNull());
 
     GenTree* qmarkNull;
     //
@@ -5420,10 +5420,10 @@ int Compiler::impIsInstPatternMatch(
     //                 /     \.
     //           condNull  GT_COLON
     //                      /     \.
-    //                condMT   CNS_INT
-    //                       false/true
+    //                  CNS_INT  condMT
+    //                false/true
     //
-    temp      = gtNewColonNode(TYP_INT, condMT, isNotNullTest ? gtNewFalse() : gtNewTrue());
+    temp      = gtNewColonNode(TYP_INT, isNotNullTest ? gtNewFalse() : gtNewTrue(), condMT);
     qmarkNull = gtNewQmarkNode(TYP_INT, condNull, temp->AsColon());
 
     // Make QMark node a top level node by spilling it.
