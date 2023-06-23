@@ -5311,6 +5311,42 @@ GenTree* Compiler::impOptimizeCastClassOrIsInst(GenTree* op1, CORINFO_RESOLVED_T
 }
 
 //------------------------------------------------------------------------
+// impExtractNullableForCastClassOrIsInst: change nullable to underlying type for casting
+//
+// Arguments:
+//   pOp2 - type handle for type to cast to
+//   pResolvedToken - resolved token from the cast operation
+//
+// Return Value:
+//   If the cast can be expanded to comparison of method table to op2.
+//
+// Notes:
+//   If op2 is updated, resolvedToken will also be updated correspondingly.
+
+bool Compiler::impExtractNullableForCastClassOrIsInst(GenTree** pOp2, CORINFO_RESOLVED_TOKEN* pResolvedToken)
+{
+    // ECMA-335 III.4.3:  If typeTok is a nullable type, Nullable<T>, it is interpreted as "boxed" T
+    // We can convert constant-ish tokens of nullable to its underlying type.
+    // However, when the type is shared generic parameter like Nullable<Struct<__Canon>>, the actual type will require
+    // runtime lookup. It's too complex to add another level of indirection in op2, fallback to the cast helper instead.
+
+    if (info.compCompHnd->getClassAttribs(pResolvedToken->hClass) & CORINFO_FLG_SHAREDINST)
+        return false;
+
+    CORINFO_CLASS_HANDLE hClass = info.compCompHnd->getTypeForBox(pResolvedToken->hClass);
+
+    if (hClass != pResolvedToken->hClass)
+    {
+        bool runtimeLookup;
+        pResolvedToken->hClass = hClass;
+        *pOp2                  = impTokenToHandle(pResolvedToken, &runtimeLookup);
+        assert(!runtimeLookup);
+    }
+
+    return true;
+}
+
+//------------------------------------------------------------------------
 // impIsInstPatternMatch: match and import common isinst idioms
 //
 // Arguments:
@@ -5326,10 +5362,13 @@ GenTree* Compiler::impOptimizeCastClassOrIsInst(GenTree* op1, CORINFO_RESOLVED_T
 //   op2 is known to represent an exact type (sealed or value type).
 
 int Compiler::impIsInstPatternMatch(
-    GenTree* op1, GenTree* op2, const BYTE* codeAddr, const BYTE* codeEndp)
+    GenTree* op1, GenTree* op2, CORINFO_RESOLVED_TOKEN* pResolvedToken, const BYTE* codeAddr, const BYTE* codeEndp)
 {
     int imported = -1;
     bool isNotNullTest = false;
+
+    if (!impIsClassExact(pResolvedToken->hClass) || !impExtractNullableForCastClassOrIsInst(&op2, pResolvedToken))
+        return -1;
 
     switch (impGetNonPrefixOpcode(codeAddr, codeEndp))
     {
@@ -5459,21 +5498,10 @@ GenTree* Compiler::impCastClassOrIsInstToTree(
     bool shouldExpandInline = true;
     bool isClassExact       = impIsClassExact(pResolvedToken->hClass);
 
-    // ECMA-335 III.4.3:  If typeTok is a nullable type, Nullable<T>, it is interpreted as "boxed" T
-    // We can convert constant-ish tokens of nullable to its underlying type.
-    // However, when the type is shared generic parameter like Nullable<Struct<__Canon>>, the actual type will require
-    // runtime lookup. It's too complex to add another level of indirection in op2, fallback to the cast helper instead.
-    if (isClassExact && !(info.compCompHnd->getClassAttribs(pResolvedToken->hClass) & CORINFO_FLG_SHAREDINST))
+    if (isClassExact)
     {
-        CORINFO_CLASS_HANDLE hClass = info.compCompHnd->getTypeForBox(pResolvedToken->hClass);
-
-        if (hClass != pResolvedToken->hClass)
-        {
-            bool runtimeLookup;
-            pResolvedToken->hClass = hClass;
-            op2                    = impTokenToHandle(pResolvedToken, &runtimeLookup);
-            assert(!runtimeLookup);
-        }
+        // Convert nullable to underlying type when appropriate.
+        impExtractNullableForCastClassOrIsInst(&op2, pResolvedToken);
     }
 
     // Profitability check.
@@ -9712,17 +9740,14 @@ void Compiler::impImportBlockCode(BasicBlock* block)
                     if (!usingReadyToRunHelper)
 #endif
                     {
-                        if (impIsClassExact(resolvedToken.hClass))
-                        {
-                            // try to fold null check after exact isinst to MT comparison
-                            int matched = impIsInstPatternMatch(op1, op2, codeAddr + sz, codeEndp);
+                        // try to fold null check after exact isinst to MT comparison first
+                        int matched = impIsInstPatternMatch(op1, op2, &resolvedToken, codeAddr + sz, codeEndp);
 
-                            if (matched >= 0)
-                            {
-                                // Skip the matched IL instructions
-                                sz += matched;
-                                break;
-                            }
+                        if (matched >= 0)
+                        {
+                            // Skip the matched IL instructions
+                            sz += matched;
+                            break;
                         }
 
                         op1 = impCastClassOrIsInstToTree(op1, op2, &resolvedToken, false, opcodeOffs);
