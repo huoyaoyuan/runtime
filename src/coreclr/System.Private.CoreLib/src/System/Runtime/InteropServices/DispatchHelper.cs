@@ -12,16 +12,6 @@ using System.Runtime.Versioning;
 
 namespace System.Runtime.InteropServices
 {
-    internal struct DispatchInfo
-    {
-        public bool m_bInvokeUsingInvokeMember;
-
-        public Type GetReflectionObject()
-        {
-            throw null;
-        }
-    }
-
     internal struct DispatchMemberInfo
     {
         public bool IsLastParamOleVarArg;
@@ -137,7 +127,7 @@ namespace System.Runtime.InteropServices
 
         [RequiresUnreferencedCode("Built-in COM marshaling is incompatible with trimming.")]
         internal static unsafe void InvokeMemberWorker(
-            DispatchInfo* pDispInfo,
+            Type* pTypeForInvokeMember,
             DispatchMemberInfo* pDispMemberInfo,
             object target,
             InvokeFlags flags,
@@ -159,6 +149,9 @@ namespace System.Runtime.InteropServices
 
             try
             {
+                Type? typeForInvokeMember = *pTypeForInvokeMember;
+                bool invokeUsingInvokeMember = typeForInvokeMember is not null;
+
                 // Allocate information used by the method.
                 int NumByrefArgs = 0;
 
@@ -183,7 +176,7 @@ namespace System.Runtime.InteropServices
                 // invoke member then allocate the array one bigger to allow space for the property
                 // value.
                 int arraySize = numParams;
-                if (pDispInfo->m_bInvokeUsingInvokeMember && (flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
+                if (invokeUsingInvokeMember && (flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
                 {
                     arraySize++;
                 }
@@ -199,7 +192,7 @@ namespace System.Runtime.InteropServices
                 {
                     // Convert the variant.
                     ComVariant* pSrcOleVariant = RetrieveSrcVariant((ComVariant*)pdp->rgvarg);
-                    propVal = MarshalParamNativeToManaged(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, numArgs, pSrcOleVariant);
+                    propVal = MarshalParamNativeToManaged(pDispMemberInfo, invokeUsingInvokeMember, numArgs, pSrcOleVariant);
 
                     // Remember if the property value is byref or not.
                     propValIsByRef = pSrcOleVariant->IsByref;
@@ -212,7 +205,7 @@ namespace System.Runtime.InteropServices
                 }
 
                 // Convert the named arguments.
-                if (!pDispInfo->m_bInvokeUsingInvokeMember)
+                if (!invokeUsingInvokeMember)
                 {
                     for (iSrcArg = 0; iSrcArg < numNamedArgs; iSrcArg++)
                     {
@@ -227,7 +220,7 @@ namespace System.Runtime.InteropServices
 
                         // Convert the variant.
                         ComVariant* pSrcOleVariant = RetrieveSrcVariant(&pSrcArgs[iSrcArg]);
-                        object? obj = MarshalParamNativeToManaged(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, iDestArg, pSrcOleVariant);
+                        object? obj = MarshalParamNativeToManaged(pDispMemberInfo, invokeUsingInvokeMember, iDestArg, pSrcOleVariant);
                         paramArray[iDestArg] = obj;
 
                         // If the argument is byref then add it to the array of byref arguments.
@@ -265,7 +258,7 @@ namespace System.Runtime.InteropServices
 
                         // Convert the variant.
                         ComVariant* pSrcOleVariant = RetrieveSrcVariant(&pSrcArgs[iSrcArg]);
-                        object? obj = MarshalParamNativeToManaged(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, iDestArg, pSrcOleVariant);
+                        object? obj = MarshalParamNativeToManaged(pDispMemberInfo, invokeUsingInvokeMember, iDestArg, pSrcOleVariant);
                         paramArray[iDestArg] = obj;
 
                         // If the argument is byref then add it to the array of byref arguments.
@@ -382,7 +375,7 @@ namespace System.Runtime.InteropServices
                         bByrefArg = pSrcOleVariant->IsByref;
                     }
 
-                    object? obj = MarshalParamNativeToManaged(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, iDestArg, pSrcOleVariant);
+                    object? obj = MarshalParamNativeToManaged(pDispMemberInfo, invokeUsingInvokeMember, iDestArg, pSrcOleVariant);
                     paramArray[iDestArg] = obj;
 
                     // If the argument is byref then add it to the array of byref arguments.
@@ -426,7 +419,7 @@ namespace System.Runtime.InteropServices
 
                 // Do the actual invocation on the member info.
                 object? retVal = null;
-                if (!pDispInfo->m_bInvokeUsingInvokeMember)
+                if (typeForInvokeMember is null)
                 {
                     Debug.Assert(pDispMemberInfo != null);
 
@@ -567,7 +560,6 @@ namespace System.Runtime.InteropServices
                 {
                     // Convert the LCID into a CultureInfo.
                     CultureInfo cultureInfo = new CultureInfo(lcid);
-                    Type type = pDispInfo->GetReflectionObject();
 
                     string memberName = pDispMemberInfo != null ? pDispMemberInfo->GetName() : $"[DISPID={dispId}]";
 
@@ -587,13 +579,13 @@ namespace System.Runtime.InteropServices
                     }
 
                     // Do the actual method invocation.
-                    retVal = type.InvokeMember(memberName, bindingFlags, OleAutBinder.Instance, target, paramArray, null, cultureInfo, namedArgArray);
+                    retVal = typeForInvokeMember.InvokeMember(memberName, bindingFlags, OleAutBinder.Instance, target, paramArray, null, cultureInfo, namedArgArray);
                 }
 
                 // Convert the return value and the byref arguments.
                 if (propValIsByRef)
                 {
-                    MarshalParamManagedToNativeRef(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, numArgs, propVal, ByrefStaticArrayBackupPropVal, (ComVariant*)pdp->rgvarg);
+                    MarshalParamManagedToNativeRef(pDispMemberInfo, invokeUsingInvokeMember, numArgs, propVal, ByrefStaticArrayBackupPropVal, (ComVariant*)pdp->rgvarg);
                 }
 
                 // Convert all the ByRef arguments back.
@@ -602,7 +594,7 @@ namespace System.Runtime.InteropServices
                     // Get the real parameter index for this arg.
                     int iParamIndex = pManagedMethodParamIndexMap[i];
 
-                    if (pDispMemberInfo == null || pDispInfo->m_bInvokeUsingInvokeMember || !pDispMemberInfo->IsParamInOnly(iParamIndex))
+                    if (pDispMemberInfo == null || invokeUsingInvokeMember || !pDispMemberInfo->IsParamInOnly(iParamIndex))
                     {
                         object? obj = paramArray[aByrefArgMngVariantIndex[i]];
                         if (pSA != IntPtr.Zero && iParamIndex == numParams - 1)
@@ -613,7 +605,7 @@ namespace System.Runtime.InteropServices
                         }
                         else
                         {
-                            MarshalParamManagedToNativeRef(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, iParamIndex, obj, aByrefStaticArrayBackupObjHandle[i], aByrefArgOleVariant[i]);
+                            MarshalParamManagedToNativeRef(pDispMemberInfo, invokeUsingInvokeMember, iParamIndex, obj, aByrefStaticArrayBackupObjHandle[i], aByrefArgOleVariant[i]);
                         }
                     }
                 }
@@ -621,7 +613,7 @@ namespace System.Runtime.InteropServices
                 // Convert the return CLR object to an OLE variant.
                 if (pVarRes != null)
                 {
-                    MarshalReturnValueManagedToNative(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, retVal, pVarRes);
+                    MarshalReturnValueManagedToNative(pDispMemberInfo, invokeUsingInvokeMember, retVal, pVarRes);
                 }
 
             }
