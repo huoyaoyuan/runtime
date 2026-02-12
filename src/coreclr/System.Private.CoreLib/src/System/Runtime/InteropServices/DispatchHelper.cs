@@ -96,7 +96,7 @@ namespace System.Runtime.InteropServices
             Exception* pException)
         {
             CultureInfo? oldCultureInfo = null;
-            object? pSA = null; // SafeArrayPtrHolder
+            IntPtr pSA = IntPtr.Zero;
 
             try
             {
@@ -263,13 +263,59 @@ namespace System.Runtime.InteropServices
                     Debug.Assert(iDestArg < numParams);
 
                     // Convert the variant.
-                    ComVariant* pSrcOleVariant;
+                    ComVariant* pSrcOleVariant = null;
                     ComVariant* pFrstVarargOleVariant = null;
-                    bool bByrefArg;
+                    ComVariant safeArrayVar = default;
+                    bool bByrefArg = false;
                     if (iDestArg == numParams - 1 && bLastParamOleVarArg)
                     {
                         // VarArg scenario
-                        throw null;
+                        bool srcArgIsSafeArray = false;
+                        if (iSrcArg == numNamedArgs)
+                        {
+                            pSrcOleVariant = RetrieveSrcVariant(&pSrcArgs[iSrcArg]);
+                            if (pSrcOleVariant->VarType is (VarEnum.VT_ARRAY | VarEnum.VT_VARIANT)
+                                or VarEnum.VT_ARRAY) // see the comments in case c) above
+                            {
+                                // vararg case c)
+                                srcArgIsSafeArray = true;
+                                bByrefArg = pSrcOleVariant->IsByref;
+                            }
+                        }
+
+                        if (!srcArgIsSafeArray)
+                        {
+                            // vararg case a), b) and d)
+                            // 1. Construct a safearray
+                            int lSafeArrayArg = 0;
+                            bByrefArg = false;
+                            pSA = SafeArrayCreateVector(VarEnum.VT_VARIANT, 0, (uint)(iSrcArg - numNamedArgs + 1));
+                            if (pSA == IntPtr.Zero)
+                            {
+                                throw new OutOfMemoryException();
+                            }
+
+                            safeArrayVar = ComVariant.CreateRaw(VarEnum.VT_VARIANT | VarEnum.VT_ARRAY, pSA);
+
+                            // 2. Put the remaining srcArg into the safearray
+                            for (; iSrcArg >= numNamedArgs; iSrcArg--, lSafeArrayArg++)
+                            {
+                                pSrcOleVariant = RetrieveSrcVariant(&pSrcArgs[iSrcArg]);
+
+                                int hr = SafeArrayPutElement(pSA, &lSafeArrayArg, pSrcOleVariant);
+                                Marshal.ThrowExceptionForHR(hr);
+
+                                // Handle the UnMarshal Scenario
+                                if (lSafeArrayArg == 0)
+                                    pFrstVarargOleVariant = pSrcOleVariant;
+
+                                // If any of the VARIANTS which are put into safearray is BYREF, we need marshal back it
+                                bByrefArg |= pSrcOleVariant->IsByref;
+                            }
+                        }
+
+                        // 3. Adjust the pSrcOleVariant in order to marshal to the params array in managed side
+                        pSrcOleVariant = &safeArrayVar;
                     }
                     else
                     {
@@ -289,7 +335,7 @@ namespace System.Runtime.InteropServices
                         // Remember the original variant so that we can unmarshal it back
                         // Note that when pSA is set, pSrcOleVaraint is re-write so that we use the first argument
                         // of vararg instead
-                        if (pSA != null)
+                        if (pSA != IntPtr.Zero)
                             aByrefArgOleVariant[NumByrefArgs] = pFrstVarargOleVariant;
                         else
                             aByrefArgOleVariant[NumByrefArgs] = pSrcOleVariant;
@@ -486,7 +532,7 @@ namespace System.Runtime.InteropServices
                     if (pDispMemberInfo == null || pDispInfo->m_bInvokeUsingInvokeMember || !pDispMemberInfo->IsParamInOnly(iParamIndex))
                     {
                         object? obj = paramArray[aByrefArgMngVariantIndex[i]];
-                        if (pSA != null && iParamIndex == numParams - 1)
+                        if (pSA != IntPtr.Zero && iParamIndex == numParams - 1)
                         {
                             // VarArg scenario
                             // Here we only unmarshal the object whose corresponding VARIANT is VarArg
@@ -512,7 +558,10 @@ namespace System.Runtime.InteropServices
             }
             finally
             {
-                // SafeArrayPtrHolder
+                if (pSA != IntPtr.Zero)
+                {
+                    SafeArrayDestroy(pSA);
+                }
 
                 // If the culture was changed then restore it to the old culture.
                 if (oldCultureInfo != null)
@@ -618,7 +667,18 @@ namespace System.Runtime.InteropServices
 
         private static unsafe bool IsVariantByrefStaticArray(ComVariant* pOle)
         {
-            throw null;
+            const ushort FADF_STATIC = 0x2;
+
+            if (pOle->IsByref && pOle->VarType.HasFlag(VarEnum.VT_ARRAY))
+            {
+                SafeArray* pSafeArray = *(SafeArray**)pOle->GetRawDataRef<IntPtr>();
+                if (pSafeArray != null && (pSafeArray->fFeatures & FADF_STATIC) != 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool IsPropertyAccessorVisible(PropertyInfo propertyInfo, bool isSetter)
@@ -639,5 +699,20 @@ namespace System.Runtime.InteropServices
             // Check to see if the member has the ComVisible attribute set
             return accessor.GetCustomAttribute<ComVisibleAttribute>()?.Value ?? true;
         }
+
+        private static extern IntPtr SafeArrayCreateVector(VarEnum vt, int lLbound, uint cElements);
+
+        private static extern unsafe int SafeArrayPutElement(IntPtr psa, int* rgIndices, void* pv);
+
+        private static extern int SafeArrayDestroy(IntPtr psa);
+    }
+
+    internal struct SafeArray
+    {
+        public ushort cDims;
+        public ushort fFeatures;
+        public uint cbElements;
+        public uint cLocks;
+        public IntPtr pvData;
     }
 }
