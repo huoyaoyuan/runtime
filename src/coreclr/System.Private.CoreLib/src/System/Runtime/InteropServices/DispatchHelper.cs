@@ -88,21 +88,30 @@ namespace System.Runtime.InteropServices
             int numParams,
             int numArgs,
             int numNamedArgs,
-            ref int NumByrefArgs,
             ref int iSrcArg,
             int* pSrcArgNames,
-            object?[] aByrefStaticArrayBackupObjHandle,
             ComVariant* pSrcArgs,
-            int* pManagedMethodParamIndexMap,
-            ComVariant** aByrefArgOleVariant,
             ComVariant* pVarRes,
             DISPPARAMS* pdp,
             Exception* pException)
         {
+            CultureInfo? oldCultureInfo = null;
             object? pSA = null; // SafeArrayPtrHolder
 
             try
             {
+                // Allocate information used by the method.
+                int NumByrefArgs = 0;
+
+                // Allocate the array of backup byref static array objects.
+                object?[] aByrefStaticArrayBackupObjHandle = new object[numArgs];
+
+                // Allocate the array that maps method params to their indices.
+                Span<int> pManagedMethodParamIndexMap = stackalloc int[numArgs];
+
+                // Allocate the array of byref objects
+                ComVariant** aByrefArgOleVariant = stackalloc ComVariant*[numArgs];
+
                 Span<bool> argUsedFlags = stackalloc bool[numParams];
                 argUsedFlags.Clear();
                 Span<int> aByrefArgMngVariantIndex = stackalloc int[numArgs];
@@ -316,7 +325,6 @@ namespace System.Runtime.InteropServices
                 {
                     Debug.Assert(pDispMemberInfo != null);
 
-                    CultureInfo? oldCultureInfo = null;
                     if (pDispMemberInfo->IsCultureAware)
                     {
                         // If the method is culture aware, then set the specified culture on the thread.
@@ -504,8 +512,13 @@ namespace System.Runtime.InteropServices
             }
             finally
             {
-                // ManagedParamCleanupHolder
                 // SafeArrayPtrHolder
+
+                // If the culture was changed then restore it to the old culture.
+                if (oldCultureInfo != null)
+                {
+                    CultureInfo.CurrentCulture = oldCultureInfo;
+                }
             }
         }
 
