@@ -559,6 +559,8 @@ namespace System.Runtime.InteropServices.Marshalling
             private set => _typeUnion._vt = (ushort)value;
         }
 
+        internal readonly bool IsByref => (VarType & VarEnum.VT_BYREF) != 0;
+
         /// <summary>
         /// Get a reference to the storage location within this <see cref="ComVariant"/> instance.
         /// </summary>
