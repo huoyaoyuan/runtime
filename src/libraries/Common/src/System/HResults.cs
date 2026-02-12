@@ -109,10 +109,13 @@ namespace System
         internal const int COR_E_VERIFICATION = unchecked((int)0x8013150D);
         internal const int COR_E_WAITHANDLECANNOTBEOPENED = unchecked((int)0x8013152C);
         internal const int CO_E_NOTINITIALIZED = unchecked((int)0x800401F0);
+        internal const int DISP_E_MEMBERNOTFOUND = unchecked((int)0x80020003);
         internal const int DISP_E_PARAMNOTFOUND = unchecked((int)0x80020004);
         internal const int DISP_E_TYPEMISMATCH = unchecked((int)0x80020005);
+        internal const int DISP_E_NONAMEDARGS = unchecked((int)0x80020007);
         internal const int DISP_E_BADVARTYPE = unchecked((int)0x80020008);
         internal const int DISP_E_OVERFLOW = unchecked((int)0x8002000A);
+        internal const int DISP_E_BADPARAMCOUNT = unchecked((int)0x8002000E);
         internal const int DISP_E_DIVBYZERO = unchecked((int)0x80020012);
         internal const int E_FILENOTFOUND = unchecked((int)0x80070002);
         internal const int E_FAIL = unchecked((int)0x80004005);

@@ -11,6 +11,8 @@ namespace System
 {
     internal sealed class OleAutBinder : DefaultBinder
     {
+        public static new OleAutBinder Instance { get; } = new OleAutBinder();
+
         // ChangeType
         // This binder uses OLEAUT to change the type of the variant.
         public override object ChangeType(object value, Type type, CultureInfo? cultureInfo)

@@ -2,6 +2,8 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Reflection;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.InteropServices.Marshalling;
@@ -11,17 +13,32 @@ namespace System.Runtime.InteropServices
     internal struct DispatchInfo
     {
         public bool m_bInvokeUsingInvokeMember;
+
+        public Type GetReflectionObject()
+        {
+            throw null;
+        }
     }
 
     internal struct DispatchMemberInfo
     {
         public bool IsLastParamOleVarArg;
+        public bool IsCultureAware;
+        public bool RequiresManagedObjCleanup;
+
+        public MemberInfo GetMemberInfoObject()
+        {
+            throw null;
+        }
+
+        public string GetName()
+        {
+            throw null;
+        }
     }
 
     internal static class DispatchHelper
     {
-        private const ushort DISPATCH_PROPERTYPUT = 0x4;
-        private const ushort DISPATCH_PROPERTYPUTREF = 0x8;
         private const VarEnum VT_TYPEMASK = (VarEnum)4095;
 
         private static unsafe object? MarshalParamNativeToManaged(
@@ -32,10 +49,14 @@ namespace System.Runtime.InteropServices
             throw null;
         }
 
+        [RequiresUnreferencedCode("Built-in COM marshaling is incompatible with trimming.")]
         internal static unsafe void InvokeMemberWorker(
             DispatchInfo* pDispInfo,
             DispatchMemberInfo* pDispMemberInfo,
-            ushort flags,
+            object target,
+            InvokeFlags flags,
+            int dispId,
+            int lcid,
             int numParams,
             int numArgs,
             int numNamedArgs,
@@ -67,7 +88,7 @@ namespace System.Runtime.InteropServices
                 // invoke member then allocate the array one bigger to allow space for the property
                 // value.
                 int arraySize = numParams;
-                if (pDispInfo->m_bInvokeUsingInvokeMember && (flags & (DISPATCH_PROPERTYPUT | DISPATCH_PROPERTYPUTREF)) != 0)
+                if (pDispInfo->m_bInvokeUsingInvokeMember && (flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
                 {
                     arraySize++;
                 }
@@ -78,7 +99,7 @@ namespace System.Runtime.InteropServices
                 int iDestArg;
 
                 // Convert the property set argument if the invoke is a PROPERTYPUT OR PROPERTYPUTREF.
-                if ((flags & (DISPATCH_PROPERTYPUT | DISPATCH_PROPERTYPUTREF)) != 0)
+                if ((flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
                 {
                     // Convert the variant.
                     ComVariant* pSrcOleVariant = RetrieveSrcVariant((ComVariant*)pdp->rgvarg);
@@ -249,6 +270,162 @@ namespace System.Runtime.InteropServices
                 {
                     paramArray[iDestArg] = Missing.Value;
                 }
+
+                // Set up the binding flags to pass to reflection.
+                BindingFlags bindingFlags = ConvertInvokeFlagsToBindingFlags(flags) | BindingFlags.OptionalParamBinding;
+
+                // Do the actual invocation on the member info.
+                object? retVal = null;
+                if (!pDispInfo->m_bInvokeUsingInvokeMember)
+                {
+                    Debug.Assert(pDispMemberInfo != null);
+
+                    CultureInfo? oldCultureInfo = null;
+                    if (pDispMemberInfo->IsCultureAware)
+                    {
+                        // If the method is culture aware, then set the specified culture on the thread.
+                        oldCultureInfo = CultureInfo.CurrentUICulture;
+                        CultureInfo.CurrentUICulture = new CultureInfo(lcid);
+                    }
+
+                    // If the method has custom marshalers then we will need to call
+                    // the clean up method on the objects. So we need to make a copy of the
+                    // ParamArray since it might be changed by reflection if any of the
+                    // parameters are byref.
+                    if (pDispMemberInfo->RequiresManagedObjCleanup)
+                    {
+                        throw null;
+                    }
+
+                    // Retrieve the member info object and the type of the member.
+                    MemberInfo memberInfo = pDispMemberInfo->GetMemberInfoObject();
+                    switch (memberInfo.MemberType)
+                    {
+                        case MemberTypes.Field:
+                        {
+                            FieldInfo fieldInfo = (FieldInfo)memberInfo;
+                            // Make sure this invoke is actually for a property put or get.
+                            if ((flags & (InvokeFlags.DISPATCH_METHOD | InvokeFlags.DISPATCH_PROPERTYGET)) != 0)
+                            {
+                                // Do some more validation now that we know the type of the invocation.
+                                if (numNamedArgs != 0)
+                                {
+                                    Marshal.ThrowExceptionForHR(HResults.DISP_E_NONAMEDARGS);
+                                }
+                                if (numArgs != 0)
+                                {
+                                    Marshal.ThrowExceptionForHR(HResults.DISP_E_BADPARAMCOUNT);
+                                }
+
+                                // Do the actual method invocation.
+                                retVal = fieldInfo.GetValue(target);
+                            }
+                            else if ((flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
+                            {
+                                // Do some more validation now that we know the type of the invocation.
+                                if (numNamedArgs != 0)
+                                {
+                                    Marshal.ThrowExceptionForHR(HResults.DISP_E_NONAMEDARGS);
+                                }
+                                if (numArgs != 0)
+                                {
+                                    Marshal.ThrowExceptionForHR(HResults.DISP_E_BADPARAMCOUNT);
+                                }
+
+                                // Do the actual method invocation.
+                                fieldInfo.SetValue(target, propVal, bindingFlags, OleAutBinder.Instance, CultureInfo.CurrentUICulture);
+                            }
+                            else
+                            {
+                                Marshal.ThrowExceptionForHR(HResults.DISP_E_MEMBERNOTFOUND);
+                            }
+
+                            break;
+                        }
+
+                        case MemberTypes.Property:
+                        {
+                            PropertyInfo propertyInfo = (PropertyInfo)memberInfo;
+
+                            // Make sure this invoke is actually for a property put or get.
+                            if ((flags & (InvokeFlags.DISPATCH_METHOD | InvokeFlags.DISPATCH_PROPERTYGET)) != 0)
+                            {
+                                if (!IsPropertyAccessorVisible(propertyInfo, isSetter: false))
+                                {
+                                    Marshal.ThrowExceptionForHR(HResults.DISP_E_MEMBERNOTFOUND);
+                                }
+
+                                // Do the actual method invocation.
+                                retVal = propertyInfo.GetValue(target, bindingFlags, OleAutBinder.Instance, paramArray, CultureInfo.CurrentUICulture);
+                            }
+                            else if ((flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
+                            {
+                                if (!IsPropertyAccessorVisible(propertyInfo, isSetter: true))
+                                {
+                                    Marshal.ThrowExceptionForHR(HResults.DISP_E_MEMBERNOTFOUND);
+                                }
+
+                                // Do the actual method invocation.
+                                propertyInfo.SetValue(target, propVal, bindingFlags, OleAutBinder.Instance, paramArray, CultureInfo.CurrentUICulture);
+                            }
+                            else
+                            {
+                                Marshal.ThrowExceptionForHR(HResults.DISP_E_MEMBERNOTFOUND);
+                            }
+
+                            break;
+                        }
+
+                        case MemberTypes.Method:
+                        {
+                            MethodBase methodInfo = (MethodBase)memberInfo;
+
+                            // Make sure this invoke is actually for a method. We also allow
+                            // prop gets since it is harmless and it allows the user a bit
+                            // more freedom.
+                            if ((flags & (InvokeFlags.DISPATCH_METHOD | InvokeFlags.DISPATCH_PROPERTYGET)) == 0)
+                            {
+                                Marshal.ThrowExceptionForHR(HResults.DISP_E_MEMBERNOTFOUND);
+                            }
+
+                            // Do the actual method invocation.
+                            retVal = methodInfo.Invoke(target, bindingFlags, OleAutBinder.Instance, paramArray, CultureInfo.CurrentUICulture);
+                            break;
+                        }
+
+                        default:
+                        {
+                            Debug.Fail("Unexpected MemberInfo type!");
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    // Convert the LCID into a CultureInfo.
+                    CultureInfo cultureInfo = new CultureInfo(lcid);
+                    Type type = pDispInfo->GetReflectionObject();
+
+                    string memberName = pDispMemberInfo != null ? pDispMemberInfo->GetName() : $"[DISPID={dispId}]";
+
+                    // If there are named arguments, then set up the array of named arguments
+                    // to pass to InvokeMember.
+                    string[]? namedArgArray = null;
+                    if (numNamedArgs > 0)
+                    {
+                        namedArgArray = SetUpNamedParamArray(pDispMemberInfo, pSrcArgNames, numNamedArgs);
+                    }
+
+                    // If this is a PROPUT or a PROPPUTREF then we need to add the value
+                    // being set as the last argument in the argument array.
+                    if ((flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
+                    {
+                        paramArray[numParams] = propVal;
+                    }
+
+                    // Do the actual method invocation.
+                    retVal = type.InvokeMember(memberName, bindingFlags, OleAutBinder.Instance, target, paramArray, null, cultureInfo, namedArgArray);
+                }
             }
             catch (Exception ex)
             {
@@ -259,6 +436,11 @@ namespace System.Runtime.InteropServices
                 // ManagedParamCleanupHolder
                 // SafeArrayPtrHolder
             }
+        }
+
+        private static unsafe string[] SetUpNamedParamArray(DispatchMemberInfo* pDispMemberInfo, int* pSrcArgNames, int numNamedArgs)
+        {
+            throw null;
         }
 
         private static unsafe ComVariant* RetrieveSrcVariant(ComVariant* pDispParamsVariant)
@@ -277,6 +459,55 @@ namespace System.Runtime.InteropServices
             }
 
             return pDispParamsVariant;
+        }
+
+        private static BindingFlags ConvertInvokeFlagsToBindingFlags(InvokeFlags invokeFlags)
+        {
+            BindingFlags bindingFlags = BindingFlags.Default;
+
+            // Check to see if DISPATCH_CONSTRUCT is set.
+            if (invokeFlags.HasFlag(InvokeFlags.DISPATCH_CONSTRUCT))
+            {
+                bindingFlags |= BindingFlags.CreateInstance;
+            }
+
+            // Check to see if DISPATCH_METHOD is set.
+            if (invokeFlags.HasFlag(InvokeFlags.DISPATCH_METHOD))
+            {
+                bindingFlags |= BindingFlags.InvokeMethod;
+            }
+
+            if ((invokeFlags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
+            {
+                // We are dealing with a PROPPUT or PROPPUTREF or both.
+                if (invokeFlags.HasFlag(InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF))
+                {
+                    bindingFlags |= BindingFlags.SetProperty;
+                }
+                else if (invokeFlags.HasFlag(InvokeFlags.DISPATCH_PROPERTYPUT))
+                {
+                    bindingFlags |= BindingFlags.PutDispProperty;
+                }
+                else
+                {
+                    bindingFlags |= BindingFlags.PutRefDispProperty;
+                }
+            }
+            else
+            {
+                // We are dealing with a PROPGET.
+                if (invokeFlags.HasFlag(InvokeFlags.DISPATCH_PROPERTYGET))
+                {
+                    bindingFlags |= BindingFlags.GetProperty;
+                }
+            }
+
+            return bindingFlags;
+        }
+
+        private static bool IsPropertyAccessorVisible(PropertyInfo propertyInfo, bool isSetter)
+        {
+            throw null;
         }
     }
 }
