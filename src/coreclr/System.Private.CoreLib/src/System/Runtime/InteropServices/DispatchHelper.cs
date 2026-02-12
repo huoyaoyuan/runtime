@@ -35,6 +35,11 @@ namespace System.Runtime.InteropServices
         {
             throw null;
         }
+
+        public ParameterInfo[] GetParameters()
+        {
+            throw null;
+        }
     }
 
     internal static class DispatchHelper
@@ -440,7 +445,34 @@ namespace System.Runtime.InteropServices
 
         private static unsafe string[] SetUpNamedParamArray(DispatchMemberInfo* pDispMemberInfo, int* pSrcArgNames, int numNamedArgs)
         {
-            throw null;
+            // Allocate the array of named parameters.
+            string?[] namedParamArray = new string[numNamedArgs];
+            ParameterInfo[]? paramArray = pDispMemberInfo != null ? pDispMemberInfo->GetParameters() : null;
+
+            // Convert all the named parameters from DISPID's to string.
+            for (int iSrcArg = 0, iDestArg = 0; iSrcArg < numNamedArgs; iSrcArg++, iDestArg++)
+            {
+                // Check to see if the DISPID is one that we can map to a parameter name.
+                if (pDispMemberInfo != null && pSrcArgNames[iSrcArg] >= 0 && pSrcArgNames[iSrcArg] < paramArray?.Length)
+                {
+                    // The DISPID is one that we assigned, map it back to its name.
+
+                    // If we managed to get the parameters and if the current ID maps
+                    // to an entry in the array.
+                    if (paramArray?.Length > pSrcArgNames[iSrcArg])
+                    {
+                        namedParamArray[iDestArg] = paramArray[iSrcArg].Name;
+                    }
+                }
+
+                // If we haven't set the param name yet, then set it to [DISP=XXXX].
+                if (namedParamArray[iDestArg] == null)
+                {
+                    namedParamArray[iDestArg] = $"[DISP={iSrcArg}]";
+                }
+            }
+
+            return namedParamArray!;
         }
 
         private static unsafe ComVariant* RetrieveSrcVariant(ComVariant* pDispParamsVariant)
