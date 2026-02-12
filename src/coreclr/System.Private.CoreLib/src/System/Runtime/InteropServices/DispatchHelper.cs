@@ -40,6 +40,11 @@ namespace System.Runtime.InteropServices
         {
             throw null;
         }
+
+        public bool IsParamInOnly(int index)
+        {
+            throw null;
+        }
     }
 
     internal static class DispatchHelper
@@ -50,6 +55,24 @@ namespace System.Runtime.InteropServices
             DispatchMemberInfo* pDispMemberInfo,
             int iParam,
             in ComVariant pSrcVar)
+        {
+            throw null;
+        }
+
+        private static unsafe void MarshalParamManagedToNativeRef(
+            DispatchMemberInfo* pDispMemberInfo,
+            int iParam,
+            object? srcObj,
+            object? backUpStaticArray,
+            ComVariant* pRefVar)
+        {
+            throw null;
+        }
+
+        private static unsafe void MarshalReturnValueManagedToNative(
+            DispatchMemberInfo* pDispMemberInfo,
+            object? srcObj,
+            ref ComVariant pDestVar)
         {
             throw null;
         }
@@ -68,9 +91,11 @@ namespace System.Runtime.InteropServices
             ref int NumByrefArgs,
             ref int iSrcArg,
             int* pSrcArgNames,
+            object?[] aByrefStaticArrayBackupObjHandle,
             ComVariant* pSrcArgs,
             int* pManagedMethodParamIndexMap,
             ComVariant** aByrefArgOleVariant,
+            ComVariant* pVarRes,
             DISPPARAMS* pdp,
             Exception* pException)
         {
@@ -82,9 +107,6 @@ namespace System.Runtime.InteropServices
                 argUsedFlags.Clear();
                 Span<int> aByrefArgMngVariantIndex = stackalloc int[numArgs];
                 aByrefArgMngVariantIndex.Clear();
-
-                // Retrieve information required for the invoke call.
-                _ = OleAutBinder.Instance;
 
                 // Allocate the array of arguments
 
@@ -100,8 +122,9 @@ namespace System.Runtime.InteropServices
 
                 object?[] paramArray = new object[arraySize];
                 object? propVal = null;
-                bool propValIsByRef;
+                bool propValIsByRef = false;
                 int iDestArg;
+                object? ByrefStaticArrayBackupPropVal = null;
 
                 // Convert the property set argument if the invoke is a PROPERTYPUT OR PROPERTYPUTREF.
                 if ((flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
@@ -114,8 +137,10 @@ namespace System.Runtime.InteropServices
                     propValIsByRef = pSrcOleVariant->IsByref;
 
                     // If the variant is a byref static array, then remember the property value.
-                    //if (IsVariantByrefStaticArray(pSrcOleVariant))
-                    //    SetObjectReference(&pObjs->ByrefStaticArrayBackupPropVal, pObjs->PropVal);
+                    if (IsVariantByrefStaticArray(pSrcOleVariant))
+                    {
+                        ByrefStaticArrayBackupPropVal = propVal;
+                    }
                 }
 
                 // Convert the named arguments.
@@ -148,8 +173,10 @@ namespace System.Runtime.InteropServices
 
                             // If the variant is a byref static array, then remember the objectref we
                             // converted the variant to.
-                            //if (IsVariantByrefStaticArray(pSrcOleVariant))
-                            //    aByrefStaticArrayBackupObjHandle[NumByrefArgs] = pAppDomain->CreateHandle(pObjs->TmpObj);
+                            if (IsVariantByrefStaticArray(pSrcOleVariant))
+                            {
+                                aByrefStaticArrayBackupObjHandle[NumByrefArgs] = obj;
+                            }
 
                             NumByrefArgs++;
                         }
@@ -184,8 +211,10 @@ namespace System.Runtime.InteropServices
 
                             // If the variant is a byref static array, then remember the objectref we
                             // converted the variant to.
-                            //if (IsVariantByrefStaticArray(pSrcOleVariant))
-                            //    aByrefStaticArrayBackupObjHandle[NumByrefArgs] = pAppDomain->CreateHandle(pObjs->TmpObj);
+                            if (IsVariantByrefStaticArray(pSrcOleVariant))
+                            {
+                                aByrefStaticArrayBackupObjHandle[NumByrefArgs] = obj;
+                            }
 
                             NumByrefArgs++;
                         }
@@ -260,8 +289,10 @@ namespace System.Runtime.InteropServices
 
                         // If the variant is a byref static array, then remember the objectref we
                         // converted the variant to.
-                        //if (IsVariantByrefStaticArray(pSrcOleVariant))
-                        //    aByrefStaticArrayBackupObjHandle[NumByrefArgs] = pAppDomain->CreateHandle(pObjs->TmpObj);
+                        if (IsVariantByrefStaticArray(pSrcOleVariant))
+                        {
+                            aByrefStaticArrayBackupObjHandle[NumByrefArgs] = obj;
+                        }
 
                         NumByrefArgs++;
                     }
@@ -431,6 +462,41 @@ namespace System.Runtime.InteropServices
                     // Do the actual method invocation.
                     retVal = type.InvokeMember(memberName, bindingFlags, OleAutBinder.Instance, target, paramArray, null, cultureInfo, namedArgArray);
                 }
+
+                // Convert the return value and the byref arguments.
+                if (propValIsByRef)
+                {
+                    MarshalParamManagedToNativeRef(pDispMemberInfo, numArgs, propVal, ByrefStaticArrayBackupPropVal, (ComVariant*)pdp->rgvarg);
+                }
+
+                // Convert all the ByRef arguments back.
+                for (int i = 0; i < NumByrefArgs; i++)
+                {
+                    // Get the real parameter index for this arg.
+                    int iParamIndex = pManagedMethodParamIndexMap[i];
+
+                    if (pDispMemberInfo == null || pDispInfo->m_bInvokeUsingInvokeMember || !pDispMemberInfo->IsParamInOnly(iParamIndex))
+                    {
+                        object? obj = paramArray[aByrefArgMngVariantIndex[i]];
+                        if (pSA != null && iParamIndex == numParams - 1)
+                        {
+                            // VarArg scenario
+                            // Here we only unmarshal the object whose corresponding VARIANT is VarArg
+                            throw null;
+                        }
+                        else
+                        {
+                            MarshalParamManagedToNativeRef(pDispMemberInfo, iParamIndex, obj, aByrefStaticArrayBackupObjHandle[i], aByrefArgOleVariant[i]);
+                        }
+                    }
+                }
+
+                // Convert the return CLR object to an OLE variant.
+                if (pVarRes != null)
+                {
+                    MarshalReturnValueManagedToNative(pDispMemberInfo, retVal, ref *pVarRes);
+                }
+
             }
             catch (Exception ex)
             {
@@ -535,6 +601,11 @@ namespace System.Runtime.InteropServices
             }
 
             return bindingFlags;
+        }
+
+        private static unsafe bool IsVariantByrefStaticArray(ComVariant* pOle)
+        {
+            throw null;
         }
 
         private static bool IsPropertyAccessorVisible(PropertyInfo propertyInfo, bool isSetter)
