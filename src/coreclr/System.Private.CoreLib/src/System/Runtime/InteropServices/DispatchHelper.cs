@@ -623,7 +623,21 @@ namespace System.Runtime.InteropServices
 
         private static bool IsPropertyAccessorVisible(PropertyInfo propertyInfo, bool isSetter)
         {
-            throw null;
+            MethodBase? accessor = isSetter ? propertyInfo.SetMethod : propertyInfo.GetMethod;
+            if (accessor is null)
+            {
+                return false;
+            }
+
+            // TODO: handle async stub
+
+            // Logic from IsMemberVisibleFromCom
+
+            // Property accessor can't be generic
+            Debug.Assert(accessor.IsGenericMethod);
+
+            // Check to see if the member has the ComVisible attribute set
+            return accessor.GetCustomAttribute<ComVisibleAttribute>()?.Value ?? true;
         }
     }
 }
