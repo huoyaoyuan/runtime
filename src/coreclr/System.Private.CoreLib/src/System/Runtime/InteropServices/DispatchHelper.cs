@@ -625,7 +625,7 @@ namespace System.Runtime.InteropServices
                 // If we haven't set the param name yet, then set it to [DISP=XXXX].
                 if (namedParamArray[iDestArg] == null)
                 {
-                    namedParamArray[iDestArg] = $"[DISP={iSrcArg}]";
+                    namedParamArray[iDestArg] = $"[DISP={pSrcArgNames[iSrcArg]}]";
                 }
             }
 
