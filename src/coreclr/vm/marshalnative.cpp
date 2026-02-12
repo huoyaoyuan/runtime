@@ -1064,6 +1064,77 @@ extern "C" void QCALLTYPE MarshalNative_GetObjectsForNativeVariants(VARIANT* aSr
     END_QCALL;
 }
 
+extern "C" void QCALLTYPE MarshalNative_MarshalVariantArrayObjectToOle(OBJECTREF* pArray, VARIANT* oleArray)
+{
+    CONTRACTL
+    {
+        QCALL_CHECK;
+        PRECONDITION(CheckPointer(pArray));
+        PRECONDITION(CheckPointer(oleArray));
+    }
+    CONTRACTL_END;
+
+    BEGIN_QCALL;
+
+    GCX_COOP();
+
+    OleVariant::MarshalVariantArrayComToOle((BASEARRAYREF*)pArray, oleArray, NULL, TRUE, FALSE, TRUE, TRUE, -1);
+
+    END_QCALL;
+}
+
+extern "C" void QCALLTYPE MarshalNative_MarshalSafeArrayForArrayRef(OBJECTREF* pSrcObj, VARIANT* pRefVar)
+{
+    CONTRACTL
+    {
+        QCALL_CHECK;
+        PRECONDITION(CheckPointer(pSrcObj));
+        PRECONDITION(CheckPointer(pRefVar));
+    }
+    CONTRACTL_END;
+
+    BEGIN_QCALL;
+
+    GCX_COOP();
+    
+    // Retrieve the element VARTYPE and method table.
+    VARTYPE ElementVt = V_VT(pRefVar) & ~(VT_BYREF | VT_ARRAY);
+    MethodTable *pElementMT = (*(BASEARRAYREF *)pSrcObj)->GetArrayElementTypeHandle().GetMethodTable();
+
+    PCODE pStructMarshalStubAddress = NULL;
+    GCPROTECT_BEGIN(*pSrcObj);
+    if (ElementVt == VT_RECORD && pElementMT->IsBlittable())
+    {
+        GCX_PREEMP();
+        pStructMarshalStubAddress = PInvoke::GetEntryPointForStructMarshalStub(pElementMT);
+    }
+    GCPROTECT_END();
+
+    // Convert the contents of the managed array into the original SAFEARRAY.
+    OleVariant::MarshalSafeArrayForArrayRef((BASEARRAYREF *)pSrcObj, *V_ARRAYREF(pRefVar), ElementVt, pElementMT, pStructMarshalStubAddress);
+
+    END_QCALL;
+}
+
+extern "C" void QCALLTYPE MarshalNative_MarshalOleRefVariantForObject(OBJECTREF* pSrcObj, VARIANT* pRefVar)
+{
+    CONTRACTL
+    {
+        QCALL_CHECK;
+        PRECONDITION(CheckPointer(pSrcObj));
+        PRECONDITION(CheckPointer(pRefVar));
+    }
+    CONTRACTL_END;
+
+    BEGIN_QCALL;
+
+    GCX_COOP();
+
+    OleVariant::MarshalOleRefVariantForObject(pSrcObj, pRefVar);
+    
+    END_QCALL;
+}
+
 //====================================================================
 // Helper function used in the COM slot to method info mapping.
 //====================================================================

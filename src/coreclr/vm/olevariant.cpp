@@ -2138,7 +2138,6 @@ void OleVariant::MarshalOleRefVariantForObject(OBJECTREF *pObj, VARIANT *pOle)
         GC_TRIGGERS;
         MODE_COOPERATIVE;
         PRECONDITION(CheckPointer(pObj));
-        PRECONDITION(IsProtectedByGCFrame (pObj));
         PRECONDITION(CheckPointer(pOle));
         PRECONDITION(V_VT(pOle) & VT_BYREF);
     }

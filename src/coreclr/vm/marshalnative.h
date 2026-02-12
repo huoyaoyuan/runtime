@@ -145,6 +145,9 @@ extern "C" BOOL QCALLTYPE MarshalNative_IsTypeVisibleFromCom(QCall::TypeHandle t
 extern "C" void QCALLTYPE MarshalNative_GetNativeVariantForObject(QCall::ObjectHandleOnStack ObjUNSAFE, LPVOID pDestNativeVariant);
 extern "C" void QCALLTYPE MarshalNative_GetObjectForNativeVariant(LPVOID pSrcNativeVariant, QCall::ObjectHandleOnStack retObject);
 extern "C" void QCALLTYPE MarshalNative_GetObjectsForNativeVariants(VARIANT* aSrcNativeVariant, int cVars, QCall::ObjectHandleOnStack retArray);
+extern "C" void QCALLTYPE MarshalNative_MarshalVariantArrayObjectToOle(OBJECTREF* pArray, VARIANT* oleArray);
+extern "C" void QCALLTYPE MarshalNative_MarshalSafeArrayForArrayRef(OBJECTREF* pSrcObj, VARIANT* pRefVar);
+extern "C" void QCALLTYPE MarshalNative_MarshalOleRefVariantForObject(OBJECTREF* pSrcObj, VARIANT* pRefVar);
 
 //====================================================================
 // These methods are used to map COM slots to method info's.

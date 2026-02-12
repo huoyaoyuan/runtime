@@ -5,8 +5,10 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Runtime.InteropServices.Marshalling;
+using System.Runtime.Versioning;
 
 namespace System.Runtime.InteropServices
 {
@@ -50,37 +52,88 @@ namespace System.Runtime.InteropServices
         {
             throw null;
         }
+
+        public unsafe object? MarshalParamNativeToManaged(int iParam, ComVariant* pSrcVar)
+        {
+            throw null;
+        }
+
+        public unsafe void MarshalParamManagedToNativeRef(int iParam, object? srcObj, ComVariant* pRefVar)
+        {
+            throw null;
+        }
+
+        public unsafe void MarshalReturnValueManagedToNative(object? pSrcObj, ComVariant* pDestVar)
+        {
+            throw null;
+        }
     }
 
-    internal static class DispatchHelper
+    [SupportedOSPlatform("windows")]
+    internal static partial class DispatchHelper
     {
         private const VarEnum VT_TYPEMASK = (VarEnum)4095;
 
         private static unsafe object? MarshalParamNativeToManaged(
             DispatchMemberInfo* pDispMemberInfo,
+            bool invokeUsingInvokeMember,
             int iParam,
-            in ComVariant pSrcVar)
+            ComVariant* pSrcVar)
         {
-            throw null;
+            if (pDispMemberInfo != null && !invokeUsingInvokeMember)
+                return pDispMemberInfo->MarshalParamNativeToManaged(iParam, pSrcVar);
+            else
+                return Marshal.GetObjectForNativeVariant((IntPtr)pSrcVar);
         }
 
         private static unsafe void MarshalParamManagedToNativeRef(
             DispatchMemberInfo* pDispMemberInfo,
+            bool invokeUsingInvokeMember,
             int iParam,
             object? srcObj,
             object? backUpStaticArray,
             ComVariant* pRefVar)
         {
-            throw null;
+            if (backUpStaticArray != null)
+            {
+                // The contents of a static array can change, but not the array itself. If
+                // the array has changed, then throw an exception.
+                if (backUpStaticArray != srcObj)
+                {
+                    throw new InvalidOperationException("IDS_INVALID_REDIM");
+                }
+
+                MarshalSafeArrayForArrayRef(&srcObj, pRefVar);
+            }
+            else
+            {
+                if (pDispMemberInfo != null && !invokeUsingInvokeMember)
+                    pDispMemberInfo->MarshalParamManagedToNativeRef(iParam, srcObj, pRefVar);
+                else
+                    MarshalOleRefVariantForObject(&srcObj, pRefVar);
+            }
         }
 
         private static unsafe void MarshalReturnValueManagedToNative(
             DispatchMemberInfo* pDispMemberInfo,
+            bool invokeUsingInvokeMember,
             object? srcObj,
-            ref ComVariant pDestVar)
+            ComVariant* pDestVar)
         {
-            throw null;
+            if (pDispMemberInfo != null && !invokeUsingInvokeMember)
+                pDispMemberInfo->MarshalReturnValueManagedToNative(srcObj, pDestVar);
+            else
+                Marshal.GetNativeVariantForObject(srcObj, (IntPtr)pDestVar);
         }
+
+        [LibraryImport(RuntimeHelpers.QCall, EntryPoint = "MarshalNative_MarshalVariantArrayObjectToOle")]
+        private static unsafe partial void MarshalVariantArrayObjectToOle(object* pArray, ComVariant* oleArray);
+
+        [LibraryImport(RuntimeHelpers.QCall, EntryPoint = "MarshalNative_MarshalSafeArrayForArrayRef")]
+        private static unsafe partial void MarshalSafeArrayForArrayRef(object* pArray, ComVariant* pRefVar);
+
+        [LibraryImport(RuntimeHelpers.QCall, EntryPoint = "MarshalNative_MarshalOleRefVariantForObject")]
+        private static unsafe partial void MarshalOleRefVariantForObject(object* pSrcObj, ComVariant* pRefVar);
 
         [RequiresUnreferencedCode("Built-in COM marshaling is incompatible with trimming.")]
         internal static unsafe void InvokeMemberWorker(
@@ -146,7 +199,7 @@ namespace System.Runtime.InteropServices
                 {
                     // Convert the variant.
                     ComVariant* pSrcOleVariant = RetrieveSrcVariant((ComVariant*)pdp->rgvarg);
-                    propVal = MarshalParamNativeToManaged(pDispMemberInfo, numArgs, in *pSrcOleVariant);
+                    propVal = MarshalParamNativeToManaged(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, numArgs, pSrcOleVariant);
 
                     // Remember if the property value is byref or not.
                     propValIsByRef = pSrcOleVariant->IsByref;
@@ -174,7 +227,7 @@ namespace System.Runtime.InteropServices
 
                         // Convert the variant.
                         ComVariant* pSrcOleVariant = RetrieveSrcVariant(&pSrcArgs[iSrcArg]);
-                        object? obj = MarshalParamNativeToManaged(pDispMemberInfo, iDestArg, in *pSrcOleVariant);
+                        object? obj = MarshalParamNativeToManaged(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, iDestArg, pSrcOleVariant);
                         paramArray[iDestArg] = obj;
 
                         // If the argument is byref then add it to the array of byref arguments.
@@ -212,7 +265,7 @@ namespace System.Runtime.InteropServices
 
                         // Convert the variant.
                         ComVariant* pSrcOleVariant = RetrieveSrcVariant(&pSrcArgs[iSrcArg]);
-                        object? obj = MarshalParamNativeToManaged(pDispMemberInfo, iDestArg, in *pSrcOleVariant);
+                        object? obj = MarshalParamNativeToManaged(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, iDestArg, pSrcOleVariant);
                         paramArray[iDestArg] = obj;
 
                         // If the argument is byref then add it to the array of byref arguments.
@@ -329,7 +382,7 @@ namespace System.Runtime.InteropServices
                         bByrefArg = pSrcOleVariant->IsByref;
                     }
 
-                    object? obj = MarshalParamNativeToManaged(pDispMemberInfo, iDestArg, in *pSrcOleVariant);
+                    object? obj = MarshalParamNativeToManaged(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, iDestArg, pSrcOleVariant);
                     paramArray[iDestArg] = obj;
 
                     // If the argument is byref then add it to the array of byref arguments.
@@ -540,7 +593,7 @@ namespace System.Runtime.InteropServices
                 // Convert the return value and the byref arguments.
                 if (propValIsByRef)
                 {
-                    MarshalParamManagedToNativeRef(pDispMemberInfo, numArgs, propVal, ByrefStaticArrayBackupPropVal, (ComVariant*)pdp->rgvarg);
+                    MarshalParamManagedToNativeRef(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, numArgs, propVal, ByrefStaticArrayBackupPropVal, (ComVariant*)pdp->rgvarg);
                 }
 
                 // Convert all the ByRef arguments back.
@@ -556,11 +609,11 @@ namespace System.Runtime.InteropServices
                         {
                             // VarArg scenario
                             // Here we only unmarshal the object whose corresponding VARIANT is VarArg
-                            throw null;
+                            MarshalVariantArrayObjectToOle(&obj, aByrefArgOleVariant[i]);
                         }
                         else
                         {
-                            MarshalParamManagedToNativeRef(pDispMemberInfo, iParamIndex, obj, aByrefStaticArrayBackupObjHandle[i], aByrefArgOleVariant[i]);
+                            MarshalParamManagedToNativeRef(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, iParamIndex, obj, aByrefStaticArrayBackupObjHandle[i], aByrefArgOleVariant[i]);
                         }
                     }
                 }
@@ -568,7 +621,7 @@ namespace System.Runtime.InteropServices
                 // Convert the return CLR object to an OLE variant.
                 if (pVarRes != null)
                 {
-                    MarshalReturnValueManagedToNative(pDispMemberInfo, retVal, ref *pVarRes);
+                    MarshalReturnValueManagedToNative(pDispMemberInfo, pDispInfo->m_bInvokeUsingInvokeMember, retVal, pVarRes);
                 }
 
             }
