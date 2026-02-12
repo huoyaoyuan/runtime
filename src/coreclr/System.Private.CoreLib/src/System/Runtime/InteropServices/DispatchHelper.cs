@@ -45,6 +45,11 @@ namespace System.Runtime.InteropServices
         {
             throw null;
         }
+
+        public void CleanUpParamManaged(int iParam, object? obj)
+        {
+            throw null;
+        }
     }
 
     internal static class DispatchHelper
@@ -97,6 +102,7 @@ namespace System.Runtime.InteropServices
         {
             CultureInfo? oldCultureInfo = null;
             IntPtr pSA = IntPtr.Zero;
+            object?[]? cleanUpArray = null;
 
             try
             {
@@ -384,7 +390,21 @@ namespace System.Runtime.InteropServices
                     // parameters are byref.
                     if (pDispMemberInfo->RequiresManagedObjCleanup)
                     {
-                        throw null;
+                        // Allocate the clean up array.
+                        cleanUpArray = new object[numParams];
+
+                        // Copy the parameters into the clean up array.
+                        for (int i = 0; i < paramArray.Length; i++)
+                        {
+                            cleanUpArray[i] = paramArray[i];
+                        }
+
+                        // If this invoke is for a PROPUT or PROPPUTREF, then add the property object to
+                        // the end of the clean up array.
+                        if ((flags & (InvokeFlags.DISPATCH_PROPERTYPUT | InvokeFlags.DISPATCH_PROPERTYPUTREF)) != 0)
+                        {
+                            cleanUpArray[numParams] = propVal;
+                        }
                     }
 
                     // Retrieve the member info object and the type of the member.
@@ -561,6 +581,15 @@ namespace System.Runtime.InteropServices
                 if (pSA != IntPtr.Zero)
                 {
                     SafeArrayDestroy(pSA);
+                }
+
+                // If the member info requires managed object cleanup, then do it now.
+                if (cleanUpArray != null)
+                {
+                    for (int i = 0; i < cleanUpArray.Length; i++)
+                    {
+                        pDispMemberInfo->CleanUpParamManaged(i, cleanUpArray[i]);
+                    }
                 }
 
                 // If the culture was changed then restore it to the old culture.
