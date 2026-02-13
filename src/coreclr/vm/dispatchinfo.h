@@ -54,6 +54,8 @@ enum CultureAwareStates
 // This structure represents a dispatch member.
 class DispatchMemberInfo
 {
+    friend class DispatchInfo;
+
 private: // static
     static MethodTable*     s_pMemberTypes[NUM_MEMBER_TYPES];
     static EnumMemberTypes  s_memberTypes[NUM_MEMBER_TYPES];

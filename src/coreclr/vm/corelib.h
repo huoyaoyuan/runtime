@@ -386,6 +386,9 @@ DEFINE_METHOD(VARIANT,              CONVERT_OBJECT_TO_VARIANT,MarshalHelperConve
 DEFINE_METHOD(VARIANT,              CAST_VARIANT,           MarshalHelperCastVariant,   SM_Obj_Int_RefComVariant_RetVoid)
 DEFINE_METHOD(VARIANT,              CONVERT_VARIANT_TO_OBJECT,MarshalHelperConvertVariantToObject,SM_RefComVariant_RetObject)
 
+DEFINE_CLASS(DISPATCH_HELPER,       Interop,                DispatchHelper)
+DEFINE_METHOD(DISPATCH_HELPER,      INVOKE_MEMBER_WORKER,   InvokeMemberWorker,               NoSig)
+
 #endif // FEATURE_COMINTEROP
 END_ILLINK_FEATURE_SWITCH()
 

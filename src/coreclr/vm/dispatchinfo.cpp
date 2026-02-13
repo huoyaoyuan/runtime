@@ -1913,23 +1913,52 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
 
     PAL_TRY(Param *, pParam, &param)
     {
-        pParam->pThis->InvokeMemberWorker(pParam->pDispMemberInfo,
-                                          pParam->pObjs,
-                                          pParam->NumParams,
-                                          pParam->NumArgs,
-                                          pParam->NumNamedArgs,
-                                          pParam->NumByrefArgs,
-                                          pParam->iSrcArg,
-                                          pParam->id,
-                                          pParam->pdp,
-                                          pParam->pVarRes,
-                                          pParam->wFlags,
-                                          pParam->lcid,
-                                          pParam->pSrcArgNames,
-                                          pParam->pSrcArgs,
-                                          pParam->aByrefStaticArrayBackupObjHandle,
-                                          pParam->pManagedMethodParamIndexMap,
-                                          pParam->aByrefArgOleVariant);
+        struct
+        {
+            DispatchMemberInfo* pDispMemberInfo;
+            BOOL* pParamInOnly;
+            void(DispatchMemberInfo::*pCleanUpParamManaged)(int, OBJECTREF*);
+            void(DispatchMemberInfo::*pMarshalParamNativeToManaged)(int, VARIANT*, OBJECTREF*);
+            void(DispatchMemberInfo::*pMarshalParamManagedToNativeRef)(int, OBJECTREF*, VARIANT*);
+            void(DispatchMemberInfo::*pMarshalReturnValueManagedToNative)(OBJECTREF*, VARIANT*);
+            bool isLastParamOleVarArg;
+            bool isCultureAware;
+            bool requiresManagedObjCleanup;
+        } dispMemberHelper;
+
+        void* pDispMemberHelper = NULL;
+        if (pParam->pDispMemberInfo)
+        {
+            dispMemberHelper.pDispMemberInfo = pParam->pDispMemberInfo;
+            dispMemberHelper.pParamInOnly = pParam->pDispMemberInfo->m_pParamInOnly;
+            dispMemberHelper.pCleanUpParamManaged = DispatchMemberInfo::CleanUpParamManaged;
+            dispMemberHelper.pMarshalParamNativeToManaged = DispatchMemberInfo::MarshalParamNativeToManaged;
+            dispMemberHelper.pMarshalParamManagedToNativeRef = DispatchMemberInfo::MarshalParamManagedToNativeRef;
+            dispMemberHelper.pMarshalReturnValueManagedToNative = DispatchMemberInfo::MarshalReturnValueManagedToNative;
+            dispMemberHelper.isLastParamOleVarArg = pParam->pDispMemberInfo->IsLastParamOleVarArg();
+            dispMemberHelper.isCultureAware = pParam->pDispMemberInfo->IsCultureAware();
+            dispMemberHelper.requiresManagedObjCleanup = pParam->pDispMemberInfo->RequiresManagedObjCleanup();
+            pDispMemberHelper = &dispMemberHelper;
+        }
+
+        UnmanagedCallersOnlyCaller invokeMember(METHOD__DISPATCH_HELPER__INVOKE_MEMBER_WORKER);
+        invokeMember.InvokeThrowing(
+            pDispMemberHelper,
+            &pParam->pObjs->ReflectionObj,
+            &pParam->pObjs->MemberInfo,
+            &pParam->pObjs->Target,
+            pParam->NumParams,
+            pParam->NumArgs,
+            pParam->NumNamedArgs,
+            &pParam->NumByrefArgs,
+            &pParam->pSrcArgs,
+            pParam->id,
+            pParam->pdp,
+            pParam->pVarRes,
+            pParam->wFlags,
+            pParam->lcid,
+            pParam->pSrcArgNames,
+            pParam->pSrcArgs);
     }
     PAL_EXCEPT_FILTER(NotifyOfCHFFilterWrapper)
     {
@@ -2158,6 +2187,12 @@ HRESULT DispatchInfo::InvokeMember(SimpleComCallWrapper *pSimpleWrap, DISPID id,
 
         Objs.Target = pSimpleWrap->GetObjectRef();
 
+        if (m_bInvokeUsingInvokeMember)
+            Objs.ReflectionObj = GetReflectionObject();
+
+        if (pDispMemberInfo)
+            Objs.MemberInfo = pDispMemberInfo->GetMemberInfoObject();
+
         //
         // Invoke the method.
         //
@@ -2281,10 +2316,6 @@ HRESULT DispatchInfo::InvokeMember(SimpleComCallWrapper *pSimpleWrap, DISPID id,
                 _ASSERTE(iSrcArg == -1);
             }
         }
-
-        // If the culture was changed then restore it to the old culture.
-        if (Objs.OldCultureInfo != NULL)
-            Thread::SetCulture(&Objs.OldCultureInfo, FALSE);
     }
     GCPROTECT_END();
     GCPROTECT_END();

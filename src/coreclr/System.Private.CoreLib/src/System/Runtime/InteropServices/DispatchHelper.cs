@@ -12,50 +12,40 @@ using System.Runtime.Versioning;
 
 namespace System.Runtime.InteropServices
 {
-    internal struct DispatchMemberInfo
+    internal unsafe struct DispatchMemberHelper
     {
-        public bool IsLastParamOleVarArg;
-        public bool IsCultureAware;
-        public bool RequiresManagedObjCleanup;
+        private IntPtr pDispMemberInfo;
+        public Interop.BOOL* pParamInOnly;
+        public delegate* unmanaged[MemberFunction]<IntPtr, int, object*, void> pCleanUpParamManaged;
+        public delegate* unmanaged[MemberFunction]<IntPtr, int, ComVariant*, object*, void> pMarshalParamNativeToManaged;
+        public delegate* unmanaged[MemberFunction]<IntPtr, int, object*, ComVariant*, void> pMarshalParamManagedToNativeRef;
+        public delegate* unmanaged[MemberFunction]<IntPtr, object*, ComVariant*, void> pMarshalReturnValueManagedToNative;
+        public bool isLastParamOleVarArg;
+        public bool isCultureAware;
+        public bool requiresManagedObjCleanup;
 
-        public MemberInfo GetMemberInfoObject()
-        {
-            throw null;
-        }
-
-        public string GetName()
-        {
-            throw null;
-        }
-
-        public ParameterInfo[] GetParameters()
-        {
-            throw null;
-        }
-
-        public bool IsParamInOnly(int index)
-        {
-            throw null;
-        }
+        public bool IsParamInOnly(int index) => pParamInOnly[index] != Interop.BOOL.FALSE;
 
         public void CleanUpParamManaged(int iParam, object? obj)
         {
-            throw null;
+            pCleanUpParamManaged(pDispMemberInfo, iParam, &obj);
         }
 
         public unsafe object? MarshalParamNativeToManaged(int iParam, ComVariant* pSrcVar)
         {
-            throw null;
+            object? ret = null;
+            pMarshalParamNativeToManaged(pDispMemberInfo, iParam, pSrcVar, &ret);
+            return ret;
         }
 
         public unsafe void MarshalParamManagedToNativeRef(int iParam, object? srcObj, ComVariant* pRefVar)
         {
-            throw null;
+            pMarshalParamManagedToNativeRef(pDispMemberInfo, iParam, &srcObj, pRefVar);
         }
 
         public unsafe void MarshalReturnValueManagedToNative(object? pSrcObj, ComVariant* pDestVar)
         {
-            throw null;
+            pMarshalReturnValueManagedToNative(pDispMemberInfo, &pSrcObj, pDestVar);
         }
     }
 
@@ -65,7 +55,7 @@ namespace System.Runtime.InteropServices
         private const VarEnum VT_TYPEMASK = (VarEnum)4095;
 
         private static unsafe object? MarshalParamNativeToManaged(
-            DispatchMemberInfo* pDispMemberInfo,
+            DispatchMemberHelper* pDispMemberInfo,
             bool invokeUsingInvokeMember,
             int iParam,
             ComVariant* pSrcVar)
@@ -77,7 +67,7 @@ namespace System.Runtime.InteropServices
         }
 
         private static unsafe void MarshalParamManagedToNativeRef(
-            DispatchMemberInfo* pDispMemberInfo,
+            DispatchMemberHelper* pDispMemberInfo,
             bool invokeUsingInvokeMember,
             int iParam,
             object? srcObj,
@@ -105,7 +95,7 @@ namespace System.Runtime.InteropServices
         }
 
         private static unsafe void MarshalReturnValueManagedToNative(
-            DispatchMemberInfo* pDispMemberInfo,
+            DispatchMemberHelper* pDispMemberInfo,
             bool invokeUsingInvokeMember,
             object? srcObj,
             ComVariant* pDestVar)
@@ -126,21 +116,24 @@ namespace System.Runtime.InteropServices
         private static unsafe partial void MarshalOleRefVariantForObject(object* pSrcObj, ComVariant* pRefVar);
 
         [RequiresUnreferencedCode("Built-in COM marshaling is incompatible with trimming.")]
+        [UnmanagedCallersOnly]
         internal static unsafe void InvokeMemberWorker(
+            DispatchMemberHelper* pDispMemberInfo,
             Type* pTypeForInvokeMember,
-            DispatchMemberInfo* pDispMemberInfo,
-            object target,
-            InvokeFlags flags,
-            int dispId,
-            int lcid,
+            MemberInfo* pMemberInfoObject,
+            object* pTarget,
             int numParams,
             int numArgs,
             int numNamedArgs,
-            ref int iSrcArg,
+            int* pNumByrefArgs,
+            int* pSrcArg,
+            int dispId,
+            DISPPARAMS* pdp,
+            ComVariant* pVarRes,
+            InvokeFlags flags,
+            int lcid,
             int* pSrcArgNames,
             ComVariant* pSrcArgs,
-            ComVariant* pVarRes,
-            DISPPARAMS* pdp,
             Exception* pException)
         {
             CultureInfo? oldCultureInfo = null;
@@ -149,11 +142,13 @@ namespace System.Runtime.InteropServices
 
             try
             {
+                object target = *pTarget;
                 Type? typeForInvokeMember = *pTypeForInvokeMember;
                 bool invokeUsingInvokeMember = typeForInvokeMember is not null;
+                ref int iSrcArg = ref *pSrcArg;
+                ref int NumByrefArgs = ref *pNumByrefArgs;
 
                 // Allocate information used by the method.
-                int NumByrefArgs = 0;
 
                 // Allocate the array of backup byref static array objects.
                 object?[] aByrefStaticArrayBackupObjHandle = new object[numArgs];
@@ -287,7 +282,7 @@ namespace System.Runtime.InteropServices
 
                 // Fill in the positional arguments. These are copied in reverse order and we also
                 // need to skip the arguments already filled in by named arguments.
-                bool bLastParamOleVarArg = pDispMemberInfo != null && pDispMemberInfo->IsLastParamOleVarArg;
+                bool bLastParamOleVarArg = pDispMemberInfo != null && pDispMemberInfo->isLastParamOleVarArg;
 
                 // We support VarArg by aligning with the behavior of params array in C#.
                 // Here are things we do for callers depends on the arguments it passes:
@@ -423,7 +418,7 @@ namespace System.Runtime.InteropServices
                 {
                     Debug.Assert(pDispMemberInfo != null);
 
-                    if (pDispMemberInfo->IsCultureAware)
+                    if (pDispMemberInfo->isCultureAware)
                     {
                         // If the method is culture aware, then set the specified culture on the thread.
                         oldCultureInfo = CultureInfo.CurrentUICulture;
@@ -434,7 +429,7 @@ namespace System.Runtime.InteropServices
                     // the clean up method on the objects. So we need to make a copy of the
                     // ParamArray since it might be changed by reflection if any of the
                     // parameters are byref.
-                    if (pDispMemberInfo->RequiresManagedObjCleanup)
+                    if (pDispMemberInfo->requiresManagedObjCleanup)
                     {
                         // Allocate the clean up array.
                         cleanUpArray = new object[numParams];
@@ -454,7 +449,7 @@ namespace System.Runtime.InteropServices
                     }
 
                     // Retrieve the member info object and the type of the member.
-                    MemberInfo memberInfo = pDispMemberInfo->GetMemberInfoObject();
+                    MemberInfo memberInfo = *pMemberInfoObject;
                     switch (memberInfo.MemberType)
                     {
                         case MemberTypes.Field:
@@ -561,14 +556,14 @@ namespace System.Runtime.InteropServices
                     // Convert the LCID into a CultureInfo.
                     CultureInfo cultureInfo = new CultureInfo(lcid);
 
-                    string memberName = pDispMemberInfo != null ? pDispMemberInfo->GetName() : $"[DISPID={dispId}]";
+                    string memberName = pDispMemberInfo != null ? pMemberInfoObject->Name : $"[DISPID={dispId}]";
 
                     // If there are named arguments, then set up the array of named arguments
                     // to pass to InvokeMember.
                     string[]? namedArgArray = null;
                     if (numNamedArgs > 0)
                     {
-                        namedArgArray = SetUpNamedParamArray(pDispMemberInfo, pSrcArgNames, numNamedArgs);
+                        namedArgArray = SetUpNamedParamArray(*pMemberInfoObject, pSrcArgNames, numNamedArgs);
                     }
 
                     // If this is a PROPUT or a PROPPUTREF then we need to add the value
@@ -645,17 +640,22 @@ namespace System.Runtime.InteropServices
             }
         }
 
-        private static unsafe string[] SetUpNamedParamArray(DispatchMemberInfo* pDispMemberInfo, int* pSrcArgNames, int numNamedArgs)
+        private static unsafe string[] SetUpNamedParamArray(MemberInfo? memberInfo, int* pSrcArgNames, int numNamedArgs)
         {
             // Allocate the array of named parameters.
             string?[] namedParamArray = new string[numNamedArgs];
-            ParameterInfo[]? paramArray = pDispMemberInfo != null ? pDispMemberInfo->GetParameters() : null;
+            ParameterInfo[]? paramArray = memberInfo switch
+            {
+                MethodBase method => method.GetParameters(),
+                PropertyInfo property => property.GetIndexParameters(),
+                _ => null
+            };
 
             // Convert all the named parameters from DISPID's to string.
             for (int iSrcArg = 0, iDestArg = 0; iSrcArg < numNamedArgs; iSrcArg++, iDestArg++)
             {
                 // Check to see if the DISPID is one that we can map to a parameter name.
-                if (pDispMemberInfo != null && pSrcArgNames[iSrcArg] >= 0 && pSrcArgNames[iSrcArg] < paramArray?.Length)
+                if (memberInfo != null && pSrcArgNames[iSrcArg] >= 0 && pSrcArgNames[iSrcArg] < paramArray?.Length)
                 {
                     // The DISPID is one that we assigned, map it back to its name.
 
