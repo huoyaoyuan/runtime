@@ -165,7 +165,6 @@ namespace System.Runtime.InteropServices
             int numParams,
             int numArgs,
             int numNamedArgs,
-            int* pNumByrefArgs,
             int* pSrcArg,
             int dispId,
             DISPPARAMS* pdp,
@@ -182,7 +181,7 @@ namespace System.Runtime.InteropServices
             IntPtr pSA = IntPtr.Zero;
             object?[]? cleanUpArray = null;
             ref int iSrcArg = ref *pSrcArg;
-            ref int NumByrefArgs = ref *pNumByrefArgs;
+            int NumByrefArgs = 0;
 
             // Allocate information used by the method.
 

@@ -1841,7 +1841,6 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
                                       int                   NumParams,
                                       int                   NumArgs,
                                       int                   NumNamedArgs,
-                                      int&                  NumByrefArgs,
                                       int&                  iSrcArg,
                                       DISPID                id,
                                       DISPPARAMS*           pdp,
@@ -1850,9 +1849,6 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
                                       LCID                  lcid,
                                       DISPID*               pSrcArgNames,
                                       VARIANT*              pSrcArgs,
-                                      OBJECTHANDLE*         aByrefStaticArrayBackupObjHandle,
-                                      int*                  pManagedMethodParamIndexMap,
-                                      VARIANT**             aByrefArgOleVariant,
                                       Frame *               pFrame)
 
 {
@@ -1873,7 +1869,6 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
         int                   NumParams;
         int                   NumArgs;
         int                   NumNamedArgs;
-        int&                  NumByrefArgs;
         int&                  iSrcArg;
         DISPID                id;
         DISPPARAMS*           pdp;
@@ -1882,14 +1877,11 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
         LCID                  lcid;
         DISPID*               pSrcArgNames;
         VARIANT*              pSrcArgs;
-        OBJECTHANDLE*         aByrefStaticArrayBackupObjHandle;
-        int*                  pManagedMethodParamIndexMap;
-        VARIANT**             aByrefArgOleVariant;
 
-        Param(int& _NumByrefArgs, int& _iSrcArg)
-            : NumByrefArgs(_NumByrefArgs), iSrcArg(_iSrcArg)
+        Param(int& _iSrcArg)
+            : iSrcArg(_iSrcArg)
         {}
-    } param(NumByrefArgs, iSrcArg);
+    } param(iSrcArg);
 
     param.pFrame = GetThread()->GetFrame(); // Inherited from NotifyOfCHFFilterWrapperParam
     param.pThis = this;
@@ -1898,7 +1890,6 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
     param.NumParams = NumParams;
     param.NumArgs = NumArgs;
     param.NumNamedArgs = NumNamedArgs;
-    //param.NumByrefArgs = NumByrefArgs;
     //param.iSrcArg = iSrcArg;
     param.id = id;
     param.pdp = pdp;
@@ -1907,9 +1898,6 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
     param.lcid = lcid;
     param.pSrcArgNames = pSrcArgNames;
     param.pSrcArgs = pSrcArgs;
-    param.aByrefStaticArrayBackupObjHandle = aByrefStaticArrayBackupObjHandle;
-    param.pManagedMethodParamIndexMap = pManagedMethodParamIndexMap;
-    param.aByrefArgOleVariant = aByrefArgOleVariant;
 
     PAL_TRY(Param *, pParam, &param)
     {
@@ -1950,7 +1938,6 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
             pParam->NumParams,
             pParam->NumArgs,
             pParam->NumNamedArgs,
-            &pParam->NumByrefArgs,
             &pParam->pSrcArgs,
             pParam->id,
             pParam->pdp,
@@ -2157,34 +2144,6 @@ HRESULT DispatchInfo::InvokeMember(SimpleComCallWrapper *pSimpleWrap, DISPID id,
     GCPROTECT_BEGIN(pThrowable);
     GCPROTECT_BEGIN(Objs);
     {
-        //
-        // Allocate information used by the method.
-        //
-
-        int NumByrefArgs = 0;
-
-        // Allocate the array of backup byref static array objects.
-        size_t cbStaticArrayBackupObjHandle;
-        if (!ClrSafeInt<size_t>::multiply(sizeof(OBJECTHANDLE *), NumArgs, cbStaticArrayBackupObjHandle))
-            ThrowHR(COR_E_OVERFLOW);
-
-        OBJECTHANDLE *aByrefStaticArrayBackupObjHandle = (OBJECTHANDLE *)_alloca(cbStaticArrayBackupObjHandle);
-        memset(aByrefStaticArrayBackupObjHandle, 0, cbStaticArrayBackupObjHandle);
-
-        // Allocate the array that maps method params to their indices.
-        size_t cbManagedMethodParamIndexMap;
-        if (!ClrSafeInt<size_t>::multiply(sizeof(int), NumArgs, cbManagedMethodParamIndexMap))
-            ThrowHR(COR_E_OVERFLOW);
-
-        int *pManagedMethodParamIndexMap = (int *)_alloca(cbManagedMethodParamIndexMap);
-
-        // Allocate the array of byref objects.
-        size_t cbByrefArgOleVariant;
-        if (!ClrSafeInt<size_t>::multiply(sizeof(VARIANT *), NumArgs, cbByrefArgOleVariant))
-            ThrowHR(COR_E_OVERFLOW);
-
-        VARIANT **aByrefArgOleVariant = (VARIANT **)_alloca(cbByrefArgOleVariant);
-
         Objs.Target = pSimpleWrap->GetObjectRef();
 
         if (m_bInvokeUsingInvokeMember)
@@ -2209,7 +2168,6 @@ HRESULT DispatchInfo::InvokeMember(SimpleComCallWrapper *pSimpleWrap, DISPID id,
                                         NumParams,
                                         NumArgs,
                                         NumNamedArgs,
-                                        NumByrefArgs,
                                         iSrcArg,
                                         id,
                                         pdp,
@@ -2218,9 +2176,6 @@ HRESULT DispatchInfo::InvokeMember(SimpleComCallWrapper *pSimpleWrap, DISPID id,
                                         lcid,
                                         pSrcArgNames,
                                         pSrcArgs,
-                                        aByrefStaticArrayBackupObjHandle,
-                                        pManagedMethodParamIndexMap,
-                                        aByrefArgOleVariant,
                                         &catchFrame);
         }
         EX_CATCH
