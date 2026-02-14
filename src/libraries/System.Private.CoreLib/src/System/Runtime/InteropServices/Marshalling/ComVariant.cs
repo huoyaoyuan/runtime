@@ -561,6 +561,12 @@ namespace System.Runtime.InteropServices.Marshalling
 
         internal readonly bool IsByref => (VarType & VarEnum.VT_BYREF) != 0;
 
+        internal readonly unsafe void* AsByRef()
+        {
+            Debug.Assert(IsByref);
+            return (void*)_typeUnion._unionTypes._byref;
+        }
+
         /// <summary>
         /// Get a reference to the storage location within this <see cref="ComVariant"/> instance.
         /// </summary>

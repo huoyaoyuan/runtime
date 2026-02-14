@@ -115,6 +115,46 @@ namespace System.Runtime.InteropServices
         [LibraryImport(RuntimeHelpers.QCall, EntryPoint = "MarshalNative_MarshalOleRefVariantForObject")]
         private static unsafe partial void MarshalOleRefVariantForObject(object* pSrcObj, ComVariant* pRefVar);
 
+        private static unsafe void CleanUpNativeParam(DispatchMemberHelper* pDispMemberInfo, bool invokeUsingInvokeMember, int iParamIndex, object? backupStaticArray, ComVariant* pArgVariant)
+        {
+            try
+            {
+                switch (pArgVariant->VarType & ~VarEnum.VT_BYREF)
+                {
+                    // the argument type is a value type - overwrite it with zeros
+                    case VarEnum.VT_I1 or VarEnum.VT_UI1:
+                        *(byte*)pArgVariant->AsByRef() = 0;
+                        break;
+                    case VarEnum.VT_I2 or VarEnum.VT_UI2 or VarEnum.VT_BOOL:
+                        *(short*)pArgVariant->AsByRef() = 0;
+                        break;
+                    case VarEnum.VT_I4 or VarEnum.VT_UI4 or VarEnum.VT_ERROR or VarEnum.VT_HRESULT or VarEnum.VT_R4 or VarEnum.VT_INT or VarEnum.VT_UINT:
+                        *(int*)pArgVariant->AsByRef() = 0;
+                        break;
+                    case VarEnum.VT_I8 or VarEnum.VT_UI8 or VarEnum.VT_R8 or VarEnum.VT_DATE or VarEnum.VT_CY:
+                        *(long*)pArgVariant->AsByRef() = 0;
+                        break;
+                    case VarEnum.VT_PTR:
+                        *(nint*)pArgVariant->AsByRef() = 0;
+                        break;
+                    case VarEnum.VT_DECIMAL:
+                        *(decimal*)pArgVariant->AsByRef() = default;
+                        break;
+
+                    default:
+                    {
+                        // marshal managed null into the VARIANT which works for reference types
+                        MarshalParamManagedToNativeRef(pDispMemberInfo, invokeUsingInvokeMember, iParamIndex, null, backupStaticArray, pArgVariant);
+                        break;
+                    }
+                }
+            }
+            catch
+            {
+                // if the argument was totally corrupted and cleanup failed, just swallow it and continue
+            }
+        }
+
         [RequiresUnreferencedCode("Built-in COM marshaling is incompatible with trimming.")]
         [UnmanagedCallersOnly]
         internal static unsafe void InvokeMemberWorker(
@@ -136,28 +176,28 @@ namespace System.Runtime.InteropServices
             ComVariant* pSrcArgs,
             Exception* pException)
         {
+            Type? typeForInvokeMember = *pTypeForInvokeMember;
+            bool invokeUsingInvokeMember = typeForInvokeMember is not null;
             CultureInfo? oldCultureInfo = null;
             IntPtr pSA = IntPtr.Zero;
             object?[]? cleanUpArray = null;
+            ref int iSrcArg = ref *pSrcArg;
+            ref int NumByrefArgs = ref *pNumByrefArgs;
+
+            // Allocate information used by the method.
+
+            // Allocate the array of backup byref static array objects.
+            object?[] aByrefStaticArrayBackupObjHandle = new object[numArgs];
+
+            // Allocate the array that maps method params to their indices.
+            Span<int> pManagedMethodParamIndexMap = stackalloc int[numArgs];
+
+            // Allocate the array of byref objects
+            ComVariant** aByrefArgOleVariant = stackalloc ComVariant*[numArgs];
 
             try
             {
                 object target = *pTarget;
-                Type? typeForInvokeMember = *pTypeForInvokeMember;
-                bool invokeUsingInvokeMember = typeForInvokeMember is not null;
-                ref int iSrcArg = ref *pSrcArg;
-                ref int NumByrefArgs = ref *pNumByrefArgs;
-
-                // Allocate information used by the method.
-
-                // Allocate the array of backup byref static array objects.
-                object?[] aByrefStaticArrayBackupObjHandle = new object[numArgs];
-
-                // Allocate the array that maps method params to their indices.
-                Span<int> pManagedMethodParamIndexMap = stackalloc int[numArgs];
-
-                // Allocate the array of byref objects
-                ComVariant** aByrefArgOleVariant = stackalloc ComVariant*[numArgs];
 
                 Span<bool> argUsedFlags = stackalloc bool[numParams];
                 argUsedFlags.Clear();
@@ -614,6 +654,21 @@ namespace System.Runtime.InteropServices
             }
             catch (Exception ex)
             {
+                // Do cleanup - make sure that return value and outgoing arguments are cleared
+                if (pVarRes != null)
+                {
+                    pVarRes->Dispose();
+                }
+
+                for (int i = 0; i < NumByrefArgs; i++)
+                {
+                    if (pDispMemberInfo == null || invokeUsingInvokeMember || !pDispMemberInfo->IsParamInOnly(i))
+                    {
+                        // Out and in/out byref arguments are outgoing and should be cleared
+                        CleanUpNativeParam(pDispMemberInfo, invokeUsingInvokeMember, pManagedMethodParamIndexMap[i], aByrefStaticArrayBackupObjHandle[i], aByrefArgOleVariant[i]);
+                    }
+                }
+
                 *pException = ex;
             }
             finally
@@ -685,7 +740,7 @@ namespace System.Runtime.InteropServices
             // is VT_BYREF | VT_VARIANT | VT_ARRAY, it will pass the below test too.
             if (pDispParamsVariant->VarType == (VarEnum.VT_BYREF | VarEnum.VT_VARIANT))
             {
-                ComVariant* pByrefVariant = (ComVariant*)pDispParamsVariant->GetRawDataRef<IntPtr>();
+                ComVariant* pByrefVariant = (ComVariant*)pDispParamsVariant->AsByRef();
                 if ((pByrefVariant->VarType & (VT_TYPEMASK & VarEnum.VT_BYREF)) == (VarEnum.VT_VARIANT | VarEnum.VT_BYREF))
                 {
                     return pByrefVariant;
@@ -745,7 +800,7 @@ namespace System.Runtime.InteropServices
 
             if (pOle->IsByref && pOle->VarType.HasFlag(VarEnum.VT_ARRAY))
             {
-                SafeArray* pSafeArray = *(SafeArray**)pOle->GetRawDataRef<IntPtr>();
+                SafeArray* pSafeArray = *(SafeArray**)pOle->AsByRef();
                 if (pSafeArray != null && (pSafeArray->fFeatures & FADF_STATIC) != 0)
                 {
                     return true;

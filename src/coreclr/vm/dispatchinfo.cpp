@@ -2233,26 +2233,6 @@ HRESULT DispatchInfo::InvokeMember(SimpleComCallWrapper *pSimpleWrap, DISPID id,
 
         if (pThrowable != NULL)
         {
-            // Do cleanup - make sure that return value and outgoing arguments are cleared
-            if (pVarRes != NULL)
-                SafeVariantClear(pVarRes);
-
-            for (int i = 0; i < NumByrefArgs; i++)
-            {
-                if (!pDispMemberInfo || m_bInvokeUsingInvokeMember || !pDispMemberInfo->IsParamInOnly(i))
-                {
-                    // Out and in/out byref arguments are outgoing and should be cleared
-                    CleanUpNativeParam(pDispMemberInfo, pManagedMethodParamIndexMap[i], (OBJECTREF *)aByrefStaticArrayBackupObjHandle[i], aByrefArgOleVariant[i]);
-                }
-
-                // Destroy all the handles we allocated for the byref static safe array's.
-                if (aByrefStaticArrayBackupObjHandle[i] != NULL)
-                {
-                    DestroyHandle(aByrefStaticArrayBackupObjHandle[i]);
-                    aByrefStaticArrayBackupObjHandle[i] = NULL;
-                }
-            }
-
             // Do HR conversion.
             hr = SetupErrorInfo(pThrowable);
             if (hr == COR_E_TARGETINVOCATION)
