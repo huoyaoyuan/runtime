@@ -1255,10 +1255,10 @@ void DispatchInfo::InvokeMemberDebuggerWrapper(
         {
             dispMemberHelper.pDispMemberInfo = pParam->pDispMemberInfo;
             dispMemberHelper.pParamInOnly = pParam->pDispMemberInfo->m_pParamInOnly;
-            dispMemberHelper.pCleanUpParamManaged = DispatchMemberInfo::CleanUpParamManaged;
-            dispMemberHelper.pMarshalParamNativeToManaged = DispatchMemberInfo::MarshalParamNativeToManaged;
-            dispMemberHelper.pMarshalParamManagedToNativeRef = DispatchMemberInfo::MarshalParamManagedToNativeRef;
-            dispMemberHelper.pMarshalReturnValueManagedToNative = DispatchMemberInfo::MarshalReturnValueManagedToNative;
+            dispMemberHelper.pCleanUpParamManaged = &DispatchMemberInfo::CleanUpParamManaged;
+            dispMemberHelper.pMarshalParamNativeToManaged = &DispatchMemberInfo::MarshalParamNativeToManaged;
+            dispMemberHelper.pMarshalParamManagedToNativeRef = &DispatchMemberInfo::MarshalParamManagedToNativeRef;
+            dispMemberHelper.pMarshalReturnValueManagedToNative = &DispatchMemberInfo::MarshalReturnValueManagedToNative;
             dispMemberHelper.isLastParamOleVarArg = pParam->pDispMemberInfo->IsLastParamOleVarArg();
             dispMemberHelper.isCultureAware = pParam->pDispMemberInfo->IsCultureAware();
             dispMemberHelper.requiresManagedObjCleanup = pParam->pDispMemberInfo->RequiresManagedObjCleanup();
