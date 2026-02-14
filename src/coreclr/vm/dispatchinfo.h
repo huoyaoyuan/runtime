@@ -222,19 +222,8 @@ private:
 
 struct InvokeObjects
 {
-    PTRARRAYREF ParamArray;
-    PTRARRAYREF CleanUpArray;
     OBJECTREF MemberInfo;
-    OBJECTREF OleAutBinder;
     OBJECTREF Target;
-    OBJECTREF PropVal;
-    OBJECTREF ByrefStaticArrayBackupPropVal;
-    OBJECTREF RetVal;
-    OBJECTREF TmpObj;
-    OBJECTREF MemberName;
-    OBJECTREF CultureInfo;
-    OBJECTREF OldCultureInfo;
-    PTRARRAYREF NamedArgArray;
     OBJECTREF ReflectionObj;
 };
 
@@ -269,7 +258,6 @@ public:
                                                int                   NumParams,
                                                int                   NumArgs,
                                                int                   NumNamedArgs,
-                                               int&                  NumByrefArgs,
                                                int&                  iSrcArg,
                                                DISPID                id,
                                                DISPPARAMS*           pdp,
@@ -278,28 +266,7 @@ public:
                                                LCID                  lcid,
                                                DISPID*               pSrcArgNames,
                                                VARIANT*              pSrcArgs,
-                                               OBJECTHANDLE*         aByrefStaticArrayBackupObjHandle,
-                                               int*                  pManagedMethodParamIndexMap,
-                                               VARIANT**             aByrefArgOleVariant,
                                                Frame *               pFrame);
-
-    void                    InvokeMemberWorker(DispatchMemberInfo*   pDispMemberInfo,
-                                               InvokeObjects*        pObjs,
-                                               int                   NumParams,
-                                               int                   NumArgs,
-                                               int                   NumNamedArgs,
-                                               int&                  NumByrefArgs,
-                                               int&                  iSrcArg,
-                                               DISPID                id,
-                                               DISPPARAMS*           pdp,
-                                               VARIANT*              pVarRes,
-                                               WORD                  wFlags,
-                                               LCID                  lcid,
-                                               DISPID*               pSrcArgNames,
-                                               VARIANT*              pSrcArgs,
-                                               OBJECTHANDLE*         aByrefStaticArrayBackupObjHandle,
-                                               int*                  pManagedMethodParamIndexMap,
-                                               VARIANT**             aByrefArgOleVariant);
 
     // Methods to retrieve the cached MD's
     static MethodDesc*      GetFieldInfoMD(BinderMethodID Method, TypeHandle hndFieldInfoType);
@@ -311,9 +278,6 @@ public:
     // The return value will be set to TRUE if the object was out of synch and members where
     // added and it will be set to FALSE otherwise.
     BOOL                    SynchWithManagedView();
-
-    // This method retrieves the OleAutBinder type.
-    static OBJECTREF        GetOleAutBinder();
 
     // Returns TRUE if the argument is "Missing"
     static BOOL             VariantIsMissing(VARIANT *pOle);
@@ -329,15 +293,6 @@ protected:
     void                    MarshalParamManagedToNativeRef(DispatchMemberInfo *pMemberInfo, int iParam, OBJECTREF *pSrcObj, OBJECTREF *pBackupStaticArray, VARIANT *pRefVar);
     void                    MarshalReturnValueManagedToNative(DispatchMemberInfo *pMemberInfo, OBJECTREF *pSrcObj, VARIANT *pDestVar);
     void                    CleanUpNativeParam(DispatchMemberInfo *pDispMemberInfo, int iParam, OBJECTREF *pBackupStaticArray, VARIANT *pArgVariant);
-
-    // DISPID to named argument conversion helper.
-    void                    SetUpNamedParamArray(DispatchMemberInfo *pMemberInfo, DISPID *pSrcArgNames, int NumNamedArgs, PTRARRAYREF *pNamedParamArray);
-
-    // Helper method to retrieve the source VARIANT from the VARIANT contained in the disp params.
-    VARIANT*                RetrieveSrcVariant(VARIANT *pDispParamsVariant);
-
-    // Helper method to determine if a member is publicly accessible.
-    bool                    IsPropertyAccessorVisible(bool fIsSetter, OBJECTREF* pMemberInfo);
 
     // Helper methods called from SynchWithManagedView() to retrieve the lists of members.
     virtual PTRARRAYREF     RetrievePropList();
@@ -362,12 +317,6 @@ protected:
     // Helper function to fill in an EXCEPINFO for an InvocationException.
     static void             GetExcepInfoForInvocationExcep(OBJECTREF objException, EXCEPINFO *pei);
 
-    // This helper method converts the IDispatch::Invoke flags to BindingFlags.
-    static int              ConvertInvokeFlagsToBindingFlags(int InvokeFlags);
-
-    // Helper function to determine if a VARIANT is a byref static safe array.
-    static BOOL             IsVariantByrefStaticArray(VARIANT *pOle);
-
     MethodTable*            m_pMT;
     PtrHashMap              m_DispIDToMemberInfoMap;
     DispatchMemberInfo*     m_pFirstMemberInfo;
@@ -375,8 +324,6 @@ protected:
     int                     m_CurrentDispID;
     BOOL                    m_bAllowMembersNotInComMTMemberMap;
     BOOL                    m_bInvokeUsingInvokeMember;
-
-    static OBJECTHANDLE     m_hndOleAutBinder;
 };
 
 

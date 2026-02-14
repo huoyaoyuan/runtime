@@ -613,12 +613,6 @@ DEFINE_METHOD(OBJECT,               EQUALS,                 Equals,             
 
 DEFINE_CLASS(__CANON,              System,                 __Canon)
 
-BEGIN_ILLINK_FEATURE_SWITCH(System.Runtime.InteropServices.BuiltInComInterop.IsSupported, true, true)
-#ifdef FEATURE_COMINTEROP
-DEFINE_CLASS(OLE_AUT_BINDER,        System,                 OleAutBinder)
-#endif // FEATURE_COMINTEROP
-END_ILLINK_FEATURE_SWITCH()
-
 DEFINE_CLASS(MONITOR,               Threading,              Monitor)
 DEFINE_FIELD(MONITOR,               CONDITION_TABLE,        s_conditionTable)
 DEFINE_METHOD(MONITOR,              SYNCHRONIZED_METHOD_ENTER, SynchronizedMethodEnter, SM_Obj_RefBool_RetVoid)

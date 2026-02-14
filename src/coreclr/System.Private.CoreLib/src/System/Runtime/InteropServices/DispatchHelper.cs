@@ -613,7 +613,15 @@ namespace System.Runtime.InteropServices
                     }
 
                     // Do the actual method invocation.
-                    retVal = typeForInvokeMember.InvokeMember(memberName, bindingFlags, OleAutBinder.Instance, target, paramArray, null, cultureInfo, namedArgArray);
+                    retVal = typeForInvokeMember.InvokeMember(
+                        memberName,
+                        bindingFlags,
+                        OleAutBinder.Instance,
+                        target,
+                        paramArray,
+                        null, // @TODO(DM): Look into setting the byref modifiers.
+                        cultureInfo,
+                        namedArgArray);
                 }
 
                 // Convert the return value and the byref arguments.
@@ -694,6 +702,7 @@ namespace System.Runtime.InteropServices
             }
         }
 
+        // DISPID to named argument conversion helper.
         private static unsafe string[] SetUpNamedParamArray(MemberInfo? memberInfo, int* pSrcArgNames, int numNamedArgs)
         {
             // Allocate the array of named parameters.
@@ -731,6 +740,7 @@ namespace System.Runtime.InteropServices
             return namedParamArray!;
         }
 
+        // Helper method to retrieve the source VARIANT from the VARIANT contained in the disp params.
         private static unsafe ComVariant* RetrieveSrcVariant(ComVariant* pDispParamsVariant)
         {
             // For VB6 compatibility reasons, if the VARIANT is a VT_BYREF | VT_VARIANT that
@@ -793,6 +803,7 @@ namespace System.Runtime.InteropServices
             return bindingFlags;
         }
 
+        // Helper function to determine if a VARIANT is a byref static safe array.
         private static unsafe bool IsVariantByrefStaticArray(ComVariant* pOle)
         {
             const ushort FADF_STATIC = 0x2;
