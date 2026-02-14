@@ -678,7 +678,7 @@ namespace System.Runtime.InteropServices
                 }
 
                 // If the member info requires managed object cleanup, then do it now.
-                if (cleanUpArray != null)
+                if (cleanUpArray != null && pDispMemberInfo->requiresManagedObjCleanup)
                 {
                     for (int i = 0; i < cleanUpArray.Length; i++)
                     {
