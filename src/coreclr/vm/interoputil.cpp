@@ -260,42 +260,6 @@ ErrExit:
 }
 
 //---------------------------------------------------------------------------
-// Transforms an LCID into a CultureInfo.
-void GetCultureInfoForLCID(LCID lcid, OBJECTREF *pCultureObj)
-{
-    CONTRACTL
-    {
-        THROWS;
-        GC_TRIGGERS;
-        MODE_COOPERATIVE;
-        INJECT_FAULT(COMPlusThrowOM());
-        PRECONDITION(CheckPointer(pCultureObj));
-    }
-    CONTRACTL_END;
-
-    OBJECTREF CultureObj = NULL;
-    GCPROTECT_BEGIN(CultureObj)
-    {
-        // Allocate a CultureInfo with the specified LCID.
-        CultureObj = AllocateObject(CoreLibBinder::GetClass(CLASS__CULTURE_INFO));
-
-        MethodDescCallSite cultureInfoCtor(METHOD__CULTURE_INFO__INT_CTOR, &CultureObj);
-
-        // Call the CultureInfo(int culture) constructor.
-        ARG_SLOT pNewArgs[] = {
-            ObjToArgSlot(CultureObj),
-            (ARG_SLOT)lcid
-        };
-        cultureInfoCtor.Call(pNewArgs);
-
-        // Set the returned culture object.
-        *pCultureObj = CultureObj;
-    }
-    GCPROTECT_END();
-}
-
-
-//---------------------------------------------------------------------------
 // This method determines if a member is visible from COM.
 BOOL IsMemberVisibleFromCom(MethodTable *pDeclaringMT, mdToken tk, mdMethodDef mdAssociate)
 {

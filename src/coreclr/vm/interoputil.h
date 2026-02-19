@@ -102,10 +102,6 @@ BOOL GetDefaultDllImportSearchPathsAttributeValue(Module *pModule, mdToken token
 int GetLCIDParameterIndex(MethodDesc *pMD);
 
 //---------------------------------------------------------------------------
-// Transforms an LCID into a CultureInfo.
-void GetCultureInfoForLCID(LCID lcid, OBJECTREF *pCultureObj);
-
-//---------------------------------------------------------------------------
 // This method determines if a member is visible from COM.
 BOOL IsMemberVisibleFromCom(MethodTable *pDeclaringMT, mdToken tk, mdMethodDef mdAssociate);
 
