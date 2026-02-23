@@ -159,7 +159,7 @@ namespace System.Runtime.InteropServices
         [UnmanagedCallersOnly]
         internal static unsafe void InvokeMemberWorker(
             DispatchMemberHelper* pDispMemberInfo,
-            Type* pTypeForInvokeMember,
+            IReflect* pReflectForInvokeMember,
             MemberInfo* pMemberInfoObject,
             object* pTarget,
             int numParams,
@@ -175,8 +175,8 @@ namespace System.Runtime.InteropServices
             ComVariant* pSrcArgs,
             Exception* pException)
         {
-            Type? typeForInvokeMember = *pTypeForInvokeMember;
-            bool invokeUsingInvokeMember = typeForInvokeMember is not null;
+            IReflect? reflectForInvokeMember = *pReflectForInvokeMember;
+            bool invokeUsingInvokeMember = reflectForInvokeMember is not null;
             CultureInfo? oldCultureInfo = null;
             IntPtr pSA = IntPtr.Zero;
             object?[]? cleanUpArray = null;
@@ -453,7 +453,7 @@ namespace System.Runtime.InteropServices
 
                 // Do the actual invocation on the member info.
                 object? retVal = null;
-                if (typeForInvokeMember is null)
+                if (reflectForInvokeMember is null)
                 {
                     Debug.Assert(pDispMemberInfo != null);
 
@@ -613,7 +613,7 @@ namespace System.Runtime.InteropServices
                     }
 
                     // Do the actual method invocation.
-                    retVal = typeForInvokeMember.InvokeMember(
+                    retVal = reflectForInvokeMember.InvokeMember(
                         memberName,
                         bindingFlags,
                         OleAutBinder.Instance,
